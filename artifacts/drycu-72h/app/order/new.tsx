@@ -341,14 +341,6 @@ export default function NewOrderScreen() {
                 <Text style={[styles.finValue, { color: colors.destructive }]}>-₹{discountAmount.toFixed(2)}</Text>
               </View>
             )}
-            <View style={styles.finRow}>
-              <Text style={[styles.finLabel, { color: colors.mutedForeground }]}>CGST (9%)</Text>
-              <Text style={[styles.finValue, { color: colors.foreground }]}>₹{cgst.toFixed(2)}</Text>
-            </View>
-            <View style={styles.finRow}>
-              <Text style={[styles.finLabel, { color: colors.mutedForeground }]}>SGST (9%)</Text>
-              <Text style={[styles.finValue, { color: colors.foreground }]}>₹{sgst.toFixed(2)}</Text>
-            </View>
             <View style={[styles.finRow, styles.finTotal, { borderTopColor: colors.border }]}>
               <Text style={[styles.finTotalLabel, { color: colors.foreground }]}>Net Payable</Text>
               <Text style={[styles.finTotalValue, { color: colors.primary }]}>₹{netPayable.toFixed(2)}</Text>

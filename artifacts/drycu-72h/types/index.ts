@@ -12,7 +12,7 @@ export interface Customer {
 }
 
 export type ServiceType = 'Laundry' | 'Dry Cleaning' | 'Simple Press' | 'Steam Press';
-export type ItemCategory = 'Men' | 'Women' | 'Kids' | 'Household';
+export type ItemCategory = 'Men' | 'Women' | 'Kids' | 'Household' | 'Shoes' | 'Others';
 export type OrderStatus = 'Pending' | 'Ready' | 'Delivered';
 export type DiscountType = 'none' | 'flat' | 'percentage';
 

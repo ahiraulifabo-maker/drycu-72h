@@ -135,14 +135,6 @@ function BillLayout({ order, customerName, customerMobile, customerAddress }: {
             <Text style={[styles.billFinVal, { color: '#c00' }]}>-₹{order.discountAmount.toFixed(2)}</Text>
           </View>
         )}
-        <View style={styles.billFinRow}>
-          <Text style={styles.billFinLabel}>CGST (9%)</Text>
-          <Text style={styles.billFinVal}>₹{order.cgstAmount.toFixed(2)}</Text>
-        </View>
-        <View style={styles.billFinRow}>
-          <Text style={styles.billFinLabel}>SGST (9%)</Text>
-          <Text style={styles.billFinVal}>₹{order.sgstAmount.toFixed(2)}</Text>
-        </View>
         <View style={styles.billDivider} />
         <View style={styles.billFinRow}>
           <Text style={styles.billNetLabel}>NET PAYABLE</Text>
@@ -216,8 +208,6 @@ ${itemLines}
 
 ━━━━━━━━━━━━━━━━━━━━
 *Subtotal:* ₹${order.grossAmount.toFixed(2)}${order.discountAmount > 0 ? `\n*Discount:* -₹${order.discountAmount.toFixed(2)}` : ''}
-*CGST (9%):* ₹${order.cgstAmount.toFixed(2)}
-*SGST (9%):* ₹${order.sgstAmount.toFixed(2)}
 *Net Payable: ₹${order.netPayable.toFixed(2)}*
 
 *Ready by:* ${pickup.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} at ${pickup.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
@@ -347,14 +337,6 @@ Thank you for choosing ${STORE_NAME}! We'll keep you updated. ${STORE_ADDRESS}`;
                     <Text style={[styles.finVal, { color: colors.destructive }]}>-₹{order.discountAmount.toFixed(2)}</Text>
                   </View>
                 )}
-                <View style={styles.finRow}>
-                  <Text style={[styles.finLabel, { color: colors.mutedForeground }]}>CGST (9%)</Text>
-                  <Text style={[styles.finVal, { color: colors.foreground }]}>₹{order.cgstAmount.toFixed(2)}</Text>
-                </View>
-                <View style={styles.finRow}>
-                  <Text style={[styles.finLabel, { color: colors.mutedForeground }]}>SGST (9%)</Text>
-                  <Text style={[styles.finVal, { color: colors.foreground }]}>₹{order.sgstAmount.toFixed(2)}</Text>
-                </View>
                 <View style={[styles.finTotal, { borderTopColor: colors.border }]}>
                   <Text style={[styles.finTotalLabel, { color: colors.foreground }]}>Net Payable</Text>
                   <Text style={[styles.finTotalVal, { color: colors.primary }]}>₹{order.netPayable.toFixed(2)}</Text>

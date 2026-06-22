@@ -56,9 +56,9 @@ function computeFinancials(
   if (discountType === 'flat') discountAmount = Math.min(discountValue, gross);
   if (discountType === 'percentage') discountAmount = (gross * discountValue) / 100;
   const taxable = gross - discountAmount;
-  const cgst = taxable * 0.09;
-  const sgst = taxable * 0.09;
-  const net = taxable + cgst + sgst;
+  const cgst = 0;
+  const sgst = 0;
+  const net = taxable;
   return { grossAmount: gross, discountAmount, cgstAmount: cgst, sgstAmount: sgst, netPayable: net };
 }
 
