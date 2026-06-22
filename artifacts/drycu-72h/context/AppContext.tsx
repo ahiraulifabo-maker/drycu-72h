@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
-import { Customer, DiscountType, Order, OrderItem, OrderStatus } from '@/types';
+import { DEFAULT_TOPUP_SERVICES, TOPUP_STORAGE_KEY } from '@/constants/topup';
+import { Customer, DiscountType, Order, OrderItem, OrderStatus, OrderTopUp } from '@/types';
 
 const STORAGE_KEYS = {
   CUSTOMERS: 'drycu_customers',
@@ -14,6 +15,7 @@ interface AppContextType {
   orders: Order[];
   nextDI: number;
   isLoaded: boolean;
+  topUpRates: Record<string, number>;
 
   addCustomer: (data: Omit<Customer, 'id' | 'createdAt'>) => Promise<Customer | null>;
   updateCustomer: (id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>) => Promise<void>;
@@ -22,12 +24,17 @@ interface AppContextType {
   searchCustomers: (query: string) => Customer[];
   getCustomer: (id: string) => Customer | undefined;
 
+  updateTopUpRate: (name: string, rate: number) => Promise<void>;
+
   addOrder: (data: {
     customerId: string;
     items: OrderItem[];
+    topUps: OrderTopUp[];
     discountType: DiscountType;
     discountValue: number;
     pickupDeadline: string;
+    advancePaid: number;
+    bookedBy?: string;
     note?: string;
   }) => Promise<Order>;
   updateOrderStatus: (id: string, status: OrderStatus) => Promise<void>;
@@ -48,18 +55,24 @@ function formatDINumber(n: number): string {
 
 function computeFinancials(
   items: OrderItem[],
+  topUps: OrderTopUp[],
   discountType: DiscountType,
   discountValue: number
 ) {
-  const gross = items.reduce((s, i) => s + i.subtotal, 0);
+  const itemsTotal = items.reduce((s, i) => s + i.subtotal, 0);
+  const topUpTotal = topUps.reduce((s, t) => s + t.subtotal, 0);
+  const gross = itemsTotal + topUpTotal;
   let discountAmount = 0;
   if (discountType === 'flat') discountAmount = Math.min(discountValue, gross);
   if (discountType === 'percentage') discountAmount = (gross * discountValue) / 100;
-  const taxable = gross - discountAmount;
-  const cgst = 0;
-  const sgst = 0;
-  const net = taxable;
-  return { grossAmount: gross, discountAmount, cgstAmount: cgst, sgstAmount: sgst, netPayable: net };
+  const net = gross - discountAmount;
+  return { grossAmount: gross, discountAmount, cgstAmount: 0, sgstAmount: 0, netPayable: net };
+}
+
+function buildDefaultTopUpRates(): Record<string, number> {
+  const r: Record<string, number> = {};
+  DEFAULT_TOPUP_SERVICES.forEach(s => { r[s.name] = s.defaultRate; });
+  return r;
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -67,18 +80,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [nextDI, setNextDI] = useState(1);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [topUpRates, setTopUpRates] = useState<Record<string, number>>(buildDefaultTopUpRates());
 
   useEffect(() => {
     (async () => {
       try {
-        const [c, o, d] = await Promise.all([
+        const [c, o, d, t] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.CUSTOMERS),
           AsyncStorage.getItem(STORAGE_KEYS.ORDERS),
           AsyncStorage.getItem(STORAGE_KEYS.NEXT_DI),
+          AsyncStorage.getItem(TOPUP_STORAGE_KEY),
         ]);
         if (c) setCustomers(JSON.parse(c));
         if (o) setOrders(JSON.parse(o));
         if (d) setNextDI(parseInt(d, 10));
+        if (t) setTopUpRates({ ...buildDefaultTopUpRates(), ...JSON.parse(t) });
       } catch (e) {
         // ignore
       } finally {
@@ -87,11 +103,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const saveCustomers = async (list: Customer[]) => {
-    await AsyncStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(list));
-  };
-  const saveOrders = async (list: Order[]) => {
-    await AsyncStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(list));
+  const saveCustomers = async (list: Customer[]) =>
+    AsyncStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(list));
+  const saveOrders = async (list: Order[]) =>
+    AsyncStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(list));
+
+  const updateTopUpRate = async (name: string, rate: number) => {
+    const updated = { ...topUpRates, [name]: rate };
+    setTopUpRates(updated);
+    await AsyncStorage.setItem(TOPUP_STORAGE_KEY, JSON.stringify(updated));
   };
 
   const findDuplicate = useCallback((name: string, mobile: string, excludeId?: string): Customer | null => {
@@ -141,19 +161,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addOrder = async (data: {
     customerId: string;
     items: OrderItem[];
+    topUps: OrderTopUp[];
     discountType: DiscountType;
     discountValue: number;
     pickupDeadline: string;
+    advancePaid: number;
+    bookedBy?: string;
     note?: string;
   }): Promise<Order> => {
     const { grossAmount, discountAmount, cgstAmount, sgstAmount, netPayable } =
-      computeFinancials(data.items, data.discountType, data.discountValue);
+      computeFinancials(data.items, data.topUps, data.discountType, data.discountValue);
 
     const order: Order = {
       id: formatDINumber(nextDI),
       diNumber: nextDI,
       customerId: data.customerId,
       items: data.items,
+      topUps: data.topUps,
       grossAmount,
       discountType: data.discountType,
       discountValue: data.discountValue,
@@ -161,6 +185,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       cgstAmount,
       sgstAmount,
       netPayable,
+      advancePaid: data.advancePaid,
+      bookedBy: data.bookedBy,
       note: data.note,
       createdAt: new Date().toISOString(),
       pickupDeadline: data.pickupDeadline,
@@ -198,8 +224,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      customers, orders, nextDI, isLoaded,
+      customers, orders, nextDI, isLoaded, topUpRates,
       addCustomer, updateCustomer, deleteCustomer, findDuplicate, searchCustomers, getCustomer,
+      updateTopUpRate,
       addOrder, updateOrderStatus, deleteOrder, getOrdersForCustomer, getOrder,
     }}>
       {children}

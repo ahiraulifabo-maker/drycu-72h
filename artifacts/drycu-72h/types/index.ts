@@ -27,11 +27,19 @@ export interface OrderItem {
   subtotal: number;
 }
 
+export interface OrderTopUp {
+  name: string;
+  rate: number;
+  qty: number;
+  subtotal: number;
+}
+
 export interface Order {
   id: string;
   diNumber: number;
   customerId: string;
   items: OrderItem[];
+  topUps: OrderTopUp[];
   grossAmount: number;
   discountType: DiscountType;
   discountValue: number;
@@ -39,6 +47,8 @@ export interface Order {
   cgstAmount: number;
   sgstAmount: number;
   netPayable: number;
+  advancePaid: number;
+  bookedBy?: string;
   note?: string;
   createdAt: string;
   pickupDeadline: string;

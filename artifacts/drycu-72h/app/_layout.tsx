@@ -50,6 +50,10 @@ function RootLayoutNav() {
         name="order/[id]"
         options={{ title: "Order Details" }}
       />
+      <Stack.Screen
+        name="settings/topup"
+        options={{ title: "Top-Up Service Rates" }}
+      />
     </Stack>
   );
 }

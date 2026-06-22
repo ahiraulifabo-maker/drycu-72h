@@ -6,7 +6,6 @@ import React, { useState } from 'react';
 import {
   Alert,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,17 +14,22 @@ import {
 
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { STORE_INFO } from '@/constants/storeInfo';
 import { Order, OrderStatus } from '@/types';
 
-const STORE_NAME = 'DRYCU-72H';
-const STORE_ADDRESS = 'www.drycu-72h.in';
+const SERVICE_ABBR: Record<string, string> = {
+  'Laundry': 'LAU',
+  'Dry Cleaning': 'DC',
+  'Simple Press': 'SP',
+  'Steam Press': 'STP',
+};
 
 const BILL_TERMS = [
-  `#1. ${STORE_NAME} is not liable for color fastness, threads-out, missing buttons, or any other damages.`,
-  `#2. Report damages, missing items, or exchanged clothes to ${STORE_NAME} within 24 hours of delivery.`,
+  `#1. DRYCU-72H is not liable for color fastness, threads-out, missing buttons, or any other damages.`,
+  `#2. Report damages, missing items, or exchanged clothes to DRYCU-72H within 24 hours of delivery.`,
   `#3. Refer to our website (www.drycu-72h.in) or mobile app for complete Terms and Conditions.`,
-  '#4. We aim for on-time clothing delivery, but if delays occur due to unforeseen circumstances, we\'ll keep you updated on the new delivery schedule.',
-  '#5. We accept no liability for any loss or damage of the clothes arising due to washing, fire, burglary etc.',
+  `#4. We aim for on-time clothing delivery, but if delays occur due to unforeseen circumstances, we'll keep you updated on the new delivery schedule.`,
+  `#5. We accept no liability for any loss or damage of the clothes arising due to washing, fire, burglary etc.`,
 ];
 
 function StatusBadge({ status }: { status: OrderStatus }) {
@@ -45,32 +49,49 @@ function StatusBadge({ status }: { status: OrderStatus }) {
 
 function TagLayout({ order, customerName }: { order: Order; customerName: string }) {
   const pickup = new Date(order.pickupDeadline);
+  const created = new Date(order.createdAt);
+  const totalKg = order.items.reduce((s, i) => s + (i.kg || 0), 0);
+  const totalQty = order.items.reduce((s, i) => s + (i.qty || 0), 0);
+
   return (
-    <View style={styles.tagContainer}>
-      <View style={[styles.tagBox]}>
-        <Text style={styles.tagStoreName}>{STORE_NAME}</Text>
+    <View style={styles.tagOuter}>
+      <View style={styles.tagBox}>
+        <View style={styles.tagLogoBox}>
+          <Text style={styles.tagLogoX}>✕</Text>
+        </View>
+        <Text style={styles.tagStoreName}>DRYCU-72H</Text>
         <View style={styles.tagDivider} />
         <Text style={styles.tagDI}>{order.id}</Text>
         <Text style={styles.tagCustomer}>{customerName}</Text>
+        <Text style={styles.tagDate}>{created.toLocaleDateString('en-IN')} {created.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</Text>
         <View style={styles.tagDivider} />
-        {order.items.map((item, i) => (
+        {order.items.map(item => (
           <View key={item.id} style={styles.tagItem}>
-            <Text style={styles.tagItemText}>
-              {item.itemName} · {item.serviceType}
-            </Text>
+            <Text style={styles.tagItemText}>{item.itemName} · {SERVICE_ABBR[item.serviceType] ?? item.serviceType}</Text>
             <Text style={styles.tagItemDetail}>
-              {item.kg > 0 ? `${item.kg}kg ` : ''}{item.qty > 0 ? `${item.qty}pc` : ''}
+              {item.kg > 0 ? `${item.kg}kg` : ''}{item.qty > 0 ? ` ${item.qty}pc` : ''}
             </Text>
           </View>
         ))}
+        {order.topUps && order.topUps.filter(t => t.qty > 0).map(t => (
+          <View key={t.name} style={styles.tagItem}>
+            <Text style={styles.tagItemText}>{t.name} ×{t.qty}</Text>
+          </View>
+        ))}
+        <View style={styles.tagDivider} />
+        <View style={styles.tagSummaryRow}>
+          <Text style={styles.tagSummaryLabel}>T.KG {totalKg.toFixed(3)}</Text>
+          <Text style={styles.tagSummaryLabel}>Qty {totalQty}</Text>
+        </View>
         <View style={styles.tagDivider} />
         <Text style={styles.tagPickupLabel}>READY BY</Text>
         <Text style={styles.tagPickupDate}>
-          {pickup.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+          {pickup.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
         </Text>
         <Text style={styles.tagPickupTime}>
           {pickup.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
         </Text>
+        {order.bookedBy && <Text style={styles.tagBooked}>Booked By: {order.bookedBy}</Text>}
       </View>
     </View>
   );
@@ -84,84 +105,144 @@ function BillLayout({ order, customerName, customerMobile, customerAddress }: {
 }) {
   const pickup = new Date(order.pickupDeadline);
   const created = new Date(order.createdAt);
+  const totalKg = order.items.reduce((s, i) => s + (i.kg || 0), 0);
+  const advance = order.advancePaid ?? 0;
+  const balAmt = order.netPayable - advance;
+
   return (
-    <View style={styles.billContainer}>
+    <View style={styles.billOuter}>
       <View style={styles.billBox}>
-        <Text style={styles.billStoreName}>{STORE_NAME}</Text>
-        <Text style={styles.billStoreWeb}>{STORE_ADDRESS}</Text>
-        <Text style={styles.billDate}>
-          Date: {created.toLocaleDateString('en-IN')} {created.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-        </Text>
+        {/* Header */}
+        <View style={styles.billLogoBox}>
+          <Text style={styles.billLogoX}>✕</Text>
+        </View>
+        <Text style={styles.billStoreName}>{STORE_INFO.name}</Text>
+        <Text style={styles.billAddress}>{STORE_INFO.line1}</Text>
+        <Text style={styles.billAddress}>{STORE_INFO.line2}</Text>
+        <Text style={styles.billContact}>Contact: {STORE_INFO.contact}</Text>
+        <Text style={styles.billTagline}>{STORE_INFO.tagline}</Text>
+
         <View style={styles.billDivider} />
 
-        <Text style={styles.billSectionTitle}>CUSTOMER DETAILS</Text>
+        {/* DI + Customer */}
+        <Text style={styles.billDINumber}>{order.id}</Text>
         <Text style={styles.billCustName}>{customerName}</Text>
-        <Text style={styles.billCustDetail}>Mobile: {customerMobile}</Text>
-        {customerAddress ? <Text style={styles.billCustDetail}>{customerAddress}</Text> : null}
+        <Text style={styles.billCustDetail}>
+          {customerAddress}{customerMobile ? `(${customerMobile})` : ''}
+        </Text>
+        <Text style={styles.billCustDetail}>Place of Supply- {STORE_INFO.placeOfSupply}</Text>
+        <Text style={styles.billDateTime}>
+          {created.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}{' '}
+          {created.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </Text>
+
         <View style={styles.billDivider} />
 
-        <Text style={styles.billSectionTitle}>DI No: {order.id}</Text>
-        <View style={styles.billDivider} />
-
-        <View style={styles.billItemHeader}>
-          <Text style={[styles.billItemCol, { flex: 3 }]}>Item / Service</Text>
-          <Text style={[styles.billItemCol, { flex: 1, textAlign: 'center' }]}>Wt/Qty</Text>
-          <Text style={[styles.billItemCol, { flex: 1, textAlign: 'right' }]}>Amt</Text>
+        {/* Items Table */}
+        <View style={styles.billTableHeader}>
+          <Text style={[styles.billTH, { width: 52 }]}>KG</Text>
+          <Text style={[styles.billTH, { width: 36 }]}>Qty</Text>
+          <Text style={[styles.billTH, { flex: 1 }]}>Service</Text>
+          <Text style={[styles.billTH, { width: 60, textAlign: 'right' }]}>INR</Text>
         </View>
         <View style={styles.billItemDivider} />
+
         {order.items.map(item => (
-          <View key={item.id} style={styles.billItemRow}>
-            <View style={{ flex: 3 }}>
-              <Text style={styles.billItemName}>{item.itemName}</Text>
-              <Text style={styles.billItemService}>{item.serviceType}</Text>
+          <View key={item.id} style={styles.billTableRow}>
+            <Text style={[styles.billTD, { width: 52 }]}>{item.kg > 0 ? item.kg.toFixed(3) : '-'}</Text>
+            <Text style={[styles.billTD, { width: 36 }]}>{item.qty > 0 ? item.qty : '-'}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.billTDName}>{item.itemName}</Text>
+              <Text style={styles.billTDService}>{SERVICE_ABBR[item.serviceType] ?? item.serviceType}</Text>
             </View>
-            <Text style={[styles.billItemCol, { flex: 1, textAlign: 'center' }]}>
-              {item.kg > 0 ? `${item.kg}kg` : ''}{item.qty > 0 ? ` ${item.qty}pc` : ''}
-            </Text>
-            <Text style={[styles.billItemCol, { flex: 1, textAlign: 'right' }]}>₹{item.subtotal.toFixed(2)}</Text>
+            <Text style={[styles.billTD, { width: 60, textAlign: 'right' }]}>{item.subtotal.toFixed(2)}</Text>
           </View>
         ))}
-        <View style={styles.billDivider} />
 
-        <View style={styles.billFinRow}>
-          <Text style={styles.billFinLabel}>Subtotal</Text>
-          <Text style={styles.billFinVal}>₹{order.grossAmount.toFixed(2)}</Text>
-        </View>
-        {order.discountAmount > 0 && (
-          <View style={styles.billFinRow}>
-            <Text style={styles.billFinLabel}>
-              Discount ({order.discountType === 'percentage' ? `${order.discountValue}%` : 'Flat'})
-            </Text>
-            <Text style={[styles.billFinVal, { color: '#c00' }]}>-₹{order.discountAmount.toFixed(2)}</Text>
-          </View>
+        {/* Top-Ups in bill */}
+        {order.topUps && order.topUps.filter(t => t.qty > 0).length > 0 && (
+          <>
+            <View style={styles.billItemDivider} />
+            <Text style={styles.billTopUpHeader}>Top-Up Services</Text>
+            {order.topUps.filter(t => t.qty > 0).map(t => (
+              <View key={t.name} style={styles.billTableRow}>
+                <Text style={[styles.billTD, { width: 52 }]}>-</Text>
+                <Text style={[styles.billTD, { width: 36 }]}>{t.qty}</Text>
+                <Text style={[styles.billTDName, { flex: 1 }]}>{t.name}</Text>
+                <Text style={[styles.billTD, { width: 60, textAlign: 'right' }]}>{t.subtotal.toFixed(2)}</Text>
+              </View>
+            ))}
+          </>
         )}
-        <View style={styles.billDivider} />
-        <View style={styles.billFinRow}>
-          <Text style={styles.billNetLabel}>NET PAYABLE</Text>
-          <Text style={styles.billNetVal}>₹{order.netPayable.toFixed(2)}</Text>
-        </View>
+
         <View style={styles.billDivider} />
 
-        <Text style={styles.billPickupLabel}>PICKUP DEADLINE</Text>
-        <Text style={styles.billPickupDate}>
-          {pickup.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-          {' at '}
+        {/* Summary */}
+        <View style={styles.billSummaryRow}>
+          <Text style={styles.billSummaryLeft}>T.KG {totalKg.toFixed(3)}</Text>
+          <View style={styles.billSummaryRight}>
+            <View style={styles.billSummaryLine}>
+              <Text style={styles.billSummaryKey}>G Amt.</Text>
+              <Text style={styles.billSummaryVal}>{order.grossAmount.toFixed(2)}</Text>
+            </View>
+            {order.discountAmount > 0 && (
+              <View style={styles.billSummaryLine}>
+                <Text style={styles.billSummaryKey}>Discount</Text>
+                <Text style={styles.billSummaryVal}>-{order.discountAmount.toFixed(2)}</Text>
+              </View>
+            )}
+            <View style={styles.billSummaryLine}>
+              <Text style={styles.billSummaryKey}>Adv</Text>
+              <Text style={styles.billSummaryVal}>{advance.toFixed(2)}</Text>
+            </View>
+            <View style={styles.billSummaryLine}>
+              <Text style={[styles.billSummaryKey, { fontFamily: 'Inter_700Bold' }]}>Bal.Amt.</Text>
+              <Text style={[styles.billSummaryVal, { fontFamily: 'Inter_700Bold' }]}>{balAmt.toFixed(2)}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.billDivider} />
+
+        {/* Ready On, Booked By, Timing */}
+        <Text style={styles.billReadyOn}>
+          Ready On: {pickup.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })}{' '}
           {pickup.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
         </Text>
+        {order.bookedBy && <Text style={styles.billBookedBy}>Booked By : {order.bookedBy}</Text>}
+        <Text style={styles.billAdvLine}>Advance balance: {advance.toFixed(0)}</Text>
+        <Text style={styles.billTiming}>Store Timing {STORE_INFO.timing}</Text>
+
         {order.note ? (
           <>
             <View style={styles.billDivider} />
-            <Text style={styles.billNoteLabel}>NOTE</Text>
-            <Text style={styles.billNote}>{order.note}</Text>
+            <Text style={styles.billNote}>Note: {order.note}</Text>
           </>
         ) : null}
-        <View style={styles.billDivider} />
-        <Text style={styles.billTermsTitle}>TERMS & CONDITIONS</Text>
+
+        {/* Double dividers */}
+        <View style={[styles.billDivider, { marginBottom: 2 }]} />
+        <View style={[styles.billDivider, { marginTop: 2 }]} />
+
+        {/* Terms */}
+        <Text style={styles.billTermsTitle}>Terms and Conditions</Text>
         {BILL_TERMS.map((t, i) => (
           <Text key={i} style={styles.billTerm}>{t}</Text>
         ))}
+
         <View style={styles.billDivider} />
-        <Text style={styles.billThank}>Thank you for choosing {STORE_NAME}!</Text>
+
+        {/* Signature */}
+        <View style={styles.billSignatureRow}>
+          <View style={styles.billSignatureBox}>
+            <View style={styles.billSignatureLine} />
+            <Text style={styles.billSignatureLabel}>Customer</Text>
+          </View>
+          <View style={styles.billSignatureBox}>
+            <View style={styles.billSignatureLine} />
+            <Text style={styles.billSignatureLabel}>Salesman</Text>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -184,6 +265,8 @@ export default function OrderDetailScreen() {
 
   const customer = getCustomer(order.customerId);
   const pickup = new Date(order.pickupDeadline);
+  const advance = order.advancePaid ?? 0;
+  const balAmt = order.netPayable - advance;
 
   const statusOptions: OrderStatus[] = ['Pending', 'Ready', 'Delivered'];
   const statusColor: Record<OrderStatus, string> = {
@@ -194,33 +277,37 @@ export default function OrderDetailScreen() {
 
   const buildWhatsAppMessage = () => {
     const itemLines = order.items.map((item, i) =>
-      `${i + 1}. ${item.itemName} (${item.serviceType})${item.kg > 0 ? ` ${item.kg}kg` : ''}${item.qty > 0 ? ` x${item.qty}pc` : ''} = ₹${item.subtotal.toFixed(2)}`
+      `${i + 1}. ${item.itemName} (${item.serviceType})${item.kg > 0 ? ` ${item.kg}kg` : ''}${item.qty > 0 ? ` ×${item.qty}pc` : ''} = ₹${item.subtotal.toFixed(2)}`
+    ).join('\n');
+    const topUpLines = (order.topUps ?? []).filter(t => t.qty > 0).map(t =>
+      `• ${t.name} ×${t.qty} = ₹${t.subtotal.toFixed(2)}`
     ).join('\n');
 
-    return `*${STORE_NAME} - Order Summary*
+    return `*DRYCU-72H – Order Summary*
 ━━━━━━━━━━━━━━━━━━━━
-*DI Number:* ${order.id}
+*DI No:* ${order.id}
 *Customer:* ${customer?.name ?? 'N/A'}
 *Date:* ${new Date(order.createdAt).toLocaleDateString('en-IN')}
 
-*Items:*
-${itemLines}
+*Garments:*
+${itemLines}${topUpLines ? `\n\n*Top-Up Services:*\n${topUpLines}` : ''}
 
 ━━━━━━━━━━━━━━━━━━━━
-*Subtotal:* ₹${order.grossAmount.toFixed(2)}${order.discountAmount > 0 ? `\n*Discount:* -₹${order.discountAmount.toFixed(2)}` : ''}
+*Gross:* ₹${order.grossAmount.toFixed(2)}${order.discountAmount > 0 ? `\n*Discount:* -₹${order.discountAmount.toFixed(2)}` : ''}
 *Net Payable: ₹${order.netPayable.toFixed(2)}*
+*Advance:* ₹${advance.toFixed(2)}
+*Balance Due:* ₹${balAmt.toFixed(2)}
 
 *Ready by:* ${pickup.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} at ${pickup.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
 
-Thank you for choosing ${STORE_NAME}! We'll keep you updated. ${STORE_ADDRESS}`;
+Thank you for choosing DRYCU-72H! ${STORE_INFO.website}`;
   };
 
   const sendWhatsApp = () => {
     if (!customer?.mobile) { Alert.alert('No mobile', 'Customer has no mobile number.'); return; }
     const mobile = customer.mobile.replace(/\D/g, '');
     const intlMobile = mobile.length === 10 ? `91${mobile}` : mobile;
-    const msg = encodeURIComponent(buildWhatsAppMessage());
-    const url = `https://wa.me/${intlMobile}?text=${msg}`;
+    const url = `https://wa.me/${intlMobile}?text=${encodeURIComponent(buildWhatsAppMessage())}`;
     Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open WhatsApp.'));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
@@ -257,9 +344,14 @@ Thank you for choosing ${STORE_NAME}! We'll keep you updated. ${STORE_ADDRESS}`;
           {(['details', 'tag', 'bill'] as const).map(t => (
             <TouchableOpacity
               key={t}
-              style={[styles.tabBtn, activeTab === t && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
+              style={[styles.tabBtn, activeTab === t && { borderBottomColor: colors.primary, borderBottomWidth: 2.5 }]}
               onPress={() => setActiveTab(t)}
             >
+              <Ionicons
+                name={t === 'details' ? 'list-outline' : t === 'tag' ? 'pricetag-outline' : 'document-text-outline'}
+                size={16}
+                color={activeTab === t ? colors.primary : colors.mutedForeground}
+              />
               <Text style={[styles.tabText, { color: activeTab === t ? colors.primary : colors.mutedForeground }]}>
                 {t === 'details' ? 'Details' : t === 'tag' ? 'Tag (58mm)' : 'Bill (80mm)'}
               </Text>
@@ -270,7 +362,35 @@ Thank you for choosing ${STORE_NAME}! We'll keep you updated. ${STORE_ADDRESS}`;
         <ScrollView contentContainerStyle={styles.scroll}>
           {activeTab === 'details' && (
             <>
-              {/* Status Bar */}
+              {/* Print Quick Actions */}
+              <View style={styles.printRow}>
+                <TouchableOpacity
+                  style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => setActiveTab('tag')}
+                >
+                  <Ionicons name="pricetag" size={28} color={colors.primary} />
+                  <Text style={[styles.printCardTitle, { color: colors.foreground }]}>Print Tag</Text>
+                  <Text style={[styles.printCardSub, { color: colors.mutedForeground }]}>58mm label</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => setActiveTab('bill')}
+                >
+                  <Ionicons name="document-text" size={28} color={colors.accent} />
+                  <Text style={[styles.printCardTitle, { color: colors.foreground }]}>Print Bill</Text>
+                  <Text style={[styles.printCardSub, { color: colors.mutedForeground }]}>80mm receipt</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.printCard, { backgroundColor: '#25D36622', borderColor: '#25D366' }]}
+                  onPress={sendWhatsApp}
+                >
+                  <Ionicons name="logo-whatsapp" size={28} color="#25D366" />
+                  <Text style={[styles.printCardTitle, { color: colors.foreground }]}>WhatsApp</Text>
+                  <Text style={[styles.printCardSub, { color: colors.mutedForeground }]}>Send summary</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Status */}
               <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.statusRow}>
                   <Text style={[styles.sectionTitle, { color: colors.primary }]}>Status</Text>
@@ -294,35 +414,49 @@ Thank you for choosing ${STORE_NAME}! We'll keep you updated. ${STORE_ADDRESS}`;
                 </View>
               </View>
 
-              {/* Customer Info */}
+              {/* Customer */}
               <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.sectionTitle, { color: colors.primary }]}>Customer</Text>
                 {customer ? (
                   <TouchableOpacity onPress={() => router.push(`/customer/${customer.id}`)}>
                     <Text style={[styles.custName, { color: colors.foreground }]}>{customer.name}</Text>
                     <Text style={[styles.custMobile, { color: colors.mutedForeground }]}>{customer.mobile}</Text>
-                    <Text style={[styles.custLink, { color: colors.primary }]}>View Profile →</Text>
+                    <Text style={[styles.custLink, { color: colors.primary }]}>View Profile & Add Order →</Text>
                   </TouchableOpacity>
                 ) : <Text style={{ color: colors.mutedForeground }}>Unknown customer</Text>}
               </View>
 
               {/* Items */}
               <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.sectionTitle, { color: colors.primary }]}>Items ({order.items.length})</Text>
+                <Text style={[styles.sectionTitle, { color: colors.primary }]}>Garments ({order.items.length})</Text>
                 {order.items.map(item => (
                   <View key={item.id} style={[styles.itemRow, { borderBottomColor: colors.border }]}>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.itemName, { color: colors.foreground }]}>{item.itemName}</Text>
                       <Text style={[styles.itemDetail, { color: colors.mutedForeground }]}>
-                        {item.serviceType} · {item.kg > 0 ? `${item.kg}kg` : ''} {item.qty > 0 ? `×${item.qty}pc` : ''}
+                        {item.serviceType}{item.kg > 0 ? ` · ${item.kg}kg` : ''}{item.qty > 0 ? ` · ×${item.qty}pc` : ''}
                       </Text>
                     </View>
                     <Text style={[styles.itemAmount, { color: colors.foreground }]}>₹{item.subtotal.toFixed(2)}</Text>
                   </View>
                 ))}
+                {(order.topUps ?? []).filter(t => t.qty > 0).length > 0 && (
+                  <>
+                    <Text style={[styles.topUpSectionLabel, { color: colors.mutedForeground }]}>Top-Up Services</Text>
+                    {(order.topUps ?? []).filter(t => t.qty > 0).map(t => (
+                      <View key={t.name} style={[styles.itemRow, { borderBottomColor: colors.border }]}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.itemName, { color: colors.foreground }]}>{t.name}</Text>
+                          <Text style={[styles.itemDetail, { color: colors.mutedForeground }]}>×{t.qty} · ₹{t.rate}/service</Text>
+                        </View>
+                        <Text style={[styles.itemAmount, { color: colors.foreground }]}>₹{t.subtotal.toFixed(2)}</Text>
+                      </View>
+                    ))}
+                  </>
+                )}
               </View>
 
-              {/* Financial Summary */}
+              {/* Financials */}
               <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.sectionTitle, { color: colors.primary }]}>Financial Breakdown</Text>
                 <View style={styles.finRow}>
@@ -341,6 +475,14 @@ Thank you for choosing ${STORE_NAME}! We'll keep you updated. ${STORE_ADDRESS}`;
                   <Text style={[styles.finTotalLabel, { color: colors.foreground }]}>Net Payable</Text>
                   <Text style={[styles.finTotalVal, { color: colors.primary }]}>₹{order.netPayable.toFixed(2)}</Text>
                 </View>
+                <View style={styles.finRow}>
+                  <Text style={[styles.finLabel, { color: colors.mutedForeground }]}>Advance Paid</Text>
+                  <Text style={[styles.finVal, { color: colors.accent }]}>₹{advance.toFixed(2)}</Text>
+                </View>
+                <View style={styles.finRow}>
+                  <Text style={[styles.finLabel, { color: colors.warning, fontFamily: 'Inter_700Bold' }]}>Balance Due</Text>
+                  <Text style={[styles.finVal, { color: colors.warning, fontFamily: 'Inter_700Bold' }]}>₹{balAmt.toFixed(2)}</Text>
+                </View>
               </View>
 
               {/* Pickup */}
@@ -352,23 +494,10 @@ Thank you for choosing ${STORE_NAME}! We'll keep you updated. ${STORE_ADDRESS}`;
                 <Text style={[styles.pickupTime, { color: colors.primary }]}>
                   {pickup.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                 </Text>
-                {order.note ? (
-                  <>
-                    <Text style={[styles.sectionTitle, { color: colors.primary, marginTop: 12 }]}>Note</Text>
-                    <Text style={[styles.note, { color: colors.foreground }]}>{order.note}</Text>
-                  </>
-                ) : null}
-              </View>
-
-              {/* Actions */}
-              <View style={styles.actionsRow}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: '#25D366' }]}
-                  onPress={sendWhatsApp}
-                >
-                  <Ionicons name="logo-whatsapp" size={20} color="#fff" />
-                  <Text style={styles.actionBtnText}>Send WhatsApp</Text>
-                </TouchableOpacity>
+                {order.bookedBy && (
+                  <Text style={[styles.bookedBy, { color: colors.mutedForeground }]}>Booked by: {order.bookedBy}</Text>
+                )}
+                {order.note ? <Text style={[styles.note, { color: colors.foreground }]}>{order.note}</Text> : null}
               </View>
             </>
           )}
@@ -376,7 +505,7 @@ Thank you for choosing ${STORE_NAME}! We'll keep you updated. ${STORE_ADDRESS}`;
           {activeTab === 'tag' && (
             <>
               <TagLayout order={order} customerName={customer?.name ?? 'N/A'} />
-              <TouchableOpacity style={[styles.shareBtn, { backgroundColor: colors.primary }]} onPress={sendWhatsApp}>
+              <TouchableOpacity style={[styles.shareBtn, { backgroundColor: '#25D366' }]} onPress={sendWhatsApp}>
                 <Ionicons name="logo-whatsapp" size={18} color="#fff" />
                 <Text style={styles.shareBtnText}>Send via WhatsApp</Text>
               </TouchableOpacity>
@@ -407,9 +536,20 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   tabBar: { flexDirection: 'row', borderBottomWidth: 1 },
-  tabBtn: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  tabText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  tabBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  tabText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   scroll: { padding: 16, gap: 14, paddingBottom: 40 },
+  printRow: { flexDirection: 'row', gap: 10 },
+  printCard: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    gap: 6,
+  },
+  printCardTitle: { fontSize: 13, fontFamily: 'Inter_700Bold' },
+  printCardSub: { fontSize: 10, fontFamily: 'Inter_400Regular' },
   section: { borderRadius: 14, borderWidth: 1, padding: 16 },
   sectionTitle: { fontSize: 12, fontFamily: 'Inter_700Bold', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 10 },
   statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
@@ -426,6 +566,7 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
   itemDetail: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
   itemAmount: { fontSize: 14, fontFamily: 'Inter_700Bold' },
+  topUpSectionLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 0.3, textTransform: 'uppercase', marginTop: 12, marginBottom: 4 },
   finRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   finLabel: { fontSize: 14, fontFamily: 'Inter_400Regular' },
   finVal: { fontSize: 14, fontFamily: 'Inter_500Medium' },
@@ -434,51 +575,68 @@ const styles = StyleSheet.create({
   finTotalVal: { fontSize: 22, fontFamily: 'Inter_700Bold' },
   pickupDate: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
   pickupTime: { fontSize: 22, fontFamily: 'Inter_700Bold', marginTop: 4 },
-  note: { fontSize: 14, fontFamily: 'Inter_400Regular' },
-  actionsRow: { gap: 12 },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 14 },
-  actionBtnText: { color: '#fff', fontSize: 16, fontFamily: 'Inter_700Bold' },
-  shareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, marginTop: 16, marginHorizontal: 16 },
+  bookedBy: { fontSize: 13, fontFamily: 'Inter_400Regular', marginTop: 6 },
+  note: { fontSize: 14, fontFamily: 'Inter_400Regular', marginTop: 8 },
+  shareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, marginTop: 4 },
   shareBtnText: { color: '#fff', fontSize: 15, fontFamily: 'Inter_700Bold' },
-  // Tag layout
-  tagContainer: { alignItems: 'center', paddingVertical: 16 },
-  tagBox: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', padding: 14, width: 220, alignItems: 'center', borderRadius: 6 },
-  tagStoreName: { fontSize: 13, fontFamily: 'Inter_700Bold', letterSpacing: 1, textTransform: 'uppercase' },
-  tagDivider: { height: 1, backgroundColor: '#ccc', width: '100%', marginVertical: 8 },
-  tagDI: { fontSize: 20, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
-  tagCustomer: { fontSize: 12, fontFamily: 'Inter_500Medium', marginTop: 2 },
-  tagItem: { width: '100%', alignItems: 'flex-start', marginVertical: 2 },
-  tagItemText: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
+
+  // Tag styles
+  tagOuter: { alignItems: 'center', paddingVertical: 8 },
+  tagBox: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#aaa', padding: 14, width: 240, borderRadius: 6, alignItems: 'center' },
+  tagLogoBox: { width: 32, height: 32, borderWidth: 2, borderColor: '#000', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  tagLogoX: { fontSize: 16, fontFamily: 'Inter_700Bold', color: '#000' },
+  tagStoreName: { fontSize: 14, fontFamily: 'Inter_700Bold', letterSpacing: 1.5, textTransform: 'uppercase', color: '#000' },
+  tagDivider: { height: 1, backgroundColor: '#aaa', width: '100%', marginVertical: 8 },
+  tagDI: { fontSize: 22, fontFamily: 'Inter_700Bold', letterSpacing: 1, color: '#000' },
+  tagCustomer: { fontSize: 13, fontFamily: 'Inter_600SemiBold', color: '#000', marginTop: 2 },
+  tagDate: { fontSize: 10, fontFamily: 'Inter_400Regular', color: '#555', marginTop: 2 },
+  tagItem: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
+  tagItemText: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: '#000' },
   tagItemDetail: { fontSize: 10, fontFamily: 'Inter_400Regular', color: '#555' },
-  tagPickupLabel: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1, color: '#888', marginTop: 4 },
-  tagPickupDate: { fontSize: 13, fontFamily: 'Inter_700Bold' },
-  tagPickupTime: { fontSize: 11, fontFamily: 'Inter_500Medium', color: '#444' },
-  // Bill layout
-  billContainer: { alignItems: 'center', paddingVertical: 16 },
-  billBox: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', padding: 16, width: '100%', borderRadius: 6 },
-  billStoreName: { fontSize: 20, fontFamily: 'Inter_700Bold', textAlign: 'center', letterSpacing: 2, textTransform: 'uppercase' },
-  billStoreWeb: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center', color: '#555', marginTop: 2 },
-  billDate: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center', color: '#666', marginTop: 4 },
-  billDivider: { height: 1, backgroundColor: '#ccc', marginVertical: 10 },
-  billSectionTitle: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1, color: '#888', textTransform: 'uppercase', marginBottom: 4 },
-  billCustName: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  billCustDetail: { fontSize: 12, fontFamily: 'Inter_400Regular', color: '#444' },
-  billItemHeader: { flexDirection: 'row', marginBottom: 4 },
-  billItemCol: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#666', textTransform: 'uppercase' },
-  billItemDivider: { height: 1, backgroundColor: '#eee', marginBottom: 6 },
-  billItemRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 },
-  billItemName: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
-  billItemService: { fontSize: 10, fontFamily: 'Inter_400Regular', color: '#666' },
-  billFinRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 2 },
-  billFinLabel: { fontSize: 12, fontFamily: 'Inter_400Regular', color: '#444' },
-  billFinVal: { fontSize: 12, fontFamily: 'Inter_500Medium' },
-  billNetLabel: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  billNetVal: { fontSize: 16, fontFamily: 'Inter_700Bold' },
-  billPickupLabel: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#888', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 },
-  billPickupDate: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
-  billNoteLabel: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#888', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 },
-  billNote: { fontSize: 12, fontFamily: 'Inter_400Regular', color: '#444' },
-  billTermsTitle: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#888', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  billTerm: { fontSize: 10, fontFamily: 'Inter_400Regular', color: '#555', marginBottom: 4, lineHeight: 14 },
-  billThank: { fontSize: 13, fontFamily: 'Inter_700Bold', textAlign: 'center', marginTop: 4 },
+  tagSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
+  tagSummaryLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#000' },
+  tagPickupLabel: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1, color: '#888', marginTop: 4, textTransform: 'uppercase' },
+  tagPickupDate: { fontSize: 13, fontFamily: 'Inter_700Bold', color: '#000' },
+  tagPickupTime: { fontSize: 12, fontFamily: 'Inter_500Medium', color: '#333' },
+  tagBooked: { fontSize: 10, fontFamily: 'Inter_400Regular', color: '#666', marginTop: 4 },
+
+  // Bill styles
+  billOuter: { alignItems: 'center', paddingVertical: 8 },
+  billBox: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#aaa', padding: 16, width: '100%', borderRadius: 6 },
+  billLogoBox: { width: 32, height: 32, borderWidth: 2, borderColor: '#000', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 4 },
+  billLogoX: { fontSize: 16, fontFamily: 'Inter_700Bold', color: '#000' },
+  billStoreName: { fontSize: 15, fontFamily: 'Inter_700Bold', textAlign: 'center', letterSpacing: 1, textTransform: 'uppercase', color: '#000' },
+  billAddress: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center', color: '#333', marginTop: 1 },
+  billContact: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center', color: '#333', marginTop: 2 },
+  billTagline: { fontSize: 10, fontFamily: 'Inter_400Regular', textAlign: 'center', color: '#666', fontStyle: 'italic', marginTop: 2 },
+  billDivider: { height: 1, backgroundColor: '#aaa', marginVertical: 8 },
+  billDINumber: { fontSize: 20, fontFamily: 'Inter_700Bold', color: '#000', marginBottom: 2 },
+  billCustName: { fontSize: 13, fontFamily: 'Inter_600SemiBold', color: '#000' },
+  billCustDetail: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#444', marginTop: 1 },
+  billDateTime: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#333', marginTop: 4 },
+  billTableHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  billTH: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#555', textTransform: 'uppercase' },
+  billItemDivider: { height: 0.5, backgroundColor: '#ccc', marginVertical: 4 },
+  billTableRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 },
+  billTD: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#222' },
+  billTDName: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: '#000' },
+  billTDService: { fontSize: 10, fontFamily: 'Inter_400Regular', color: '#666' },
+  billTopUpHeader: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#555', textTransform: 'uppercase', marginBottom: 4 },
+  billSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  billSummaryLeft: { fontSize: 12, fontFamily: 'Inter_700Bold', color: '#000', paddingTop: 4 },
+  billSummaryRight: { alignItems: 'flex-end', gap: 3 },
+  billSummaryLine: { flexDirection: 'row', gap: 12 },
+  billSummaryKey: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#444', minWidth: 60 },
+  billSummaryVal: { fontSize: 12, fontFamily: 'Inter_500Medium', color: '#000', minWidth: 60, textAlign: 'right' },
+  billReadyOn: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: '#000', marginTop: 2 },
+  billBookedBy: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#333', marginTop: 2 },
+  billAdvLine: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#333', marginTop: 2 },
+  billTiming: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#333', marginTop: 2 },
+  billNote: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#444' },
+  billTermsTitle: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#000', marginBottom: 6 },
+  billTerm: { fontSize: 10, fontFamily: 'Inter_400Regular', color: '#444', marginBottom: 4, lineHeight: 14 },
+  billSignatureRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+  billSignatureBox: { alignItems: 'center', width: '45%' },
+  billSignatureLine: { height: 1, backgroundColor: '#000', width: '100%', marginBottom: 4 },
+  billSignatureLabel: { fontSize: 11, fontFamily: 'Inter_500Medium', color: '#000' },
 });
