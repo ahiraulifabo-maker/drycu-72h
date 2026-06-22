@@ -24,6 +24,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "doc.text", selected: "doc.text.fill" }} />
         <Label>Orders</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="reports">
+        <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
+        <Label>Reports</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -98,6 +102,18 @@ function ClassicTabLayout() {
               <SymbolView name="doc.text" tintColor={color} size={24} />
             ) : (
               <Ionicons name="receipt-outline" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="reports"
+        options={{
+          title: "Reports",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="chart.bar" tintColor={color} size={24} />
+            ) : (
+              <Ionicons name="bar-chart-outline" size={22} color={color} />
             ),
         }}
       />
