@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "p6IRGw60uP8N6RJRPe3im"
+uri = "file://artifacts/drycu-72h/assets/images/icon.png"
+type = "image"
+title = "generated_image"

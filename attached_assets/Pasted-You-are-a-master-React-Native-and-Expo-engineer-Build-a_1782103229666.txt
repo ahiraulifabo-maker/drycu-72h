@@ -1,0 +1,43 @@
+You are a master React Native and Expo engineer. Build a flawless, commercial-grade, multi-platform app designed for a desktop/tablet layout at the store counter, but built using Expo so it runs natively on authorized family mobile devices. Zero bugs, zero missing features, and complete production-ready code are required. No external authentication or Firebase is required. Use Local Storage/AsyncStorage for data persistence.
+
+1. ARCHITECTURE & MULTI-SCREEN TERMINOLOGY
+- Create a persistent database tracking two separate entities: Customers and Orders.
+- Customer Profile Fields: Unique Customer ID (Auto-generated), Name (Required), Mobile Number (Required), Address (Required), Secondary Mobile (Optional), Village (Optional), Pin Code (Optional), Email (Optional), Special Note (Optional).
+- Order Fields: Unique DI Number (Delivery/Invoice Number - must auto-increment per transaction, NOT per customer), Customer ID link, Items List, Gross Amount, Discount Type, Discount Value, CGST (9%), SGST (9%), Net Payable, Order Timestamp, Pickup Deadline Timestamp, Status (Pending/Ready/Delivered).
+
+2. SEARCH & DUPLICATION LOGIC
+- The main dashboard must feature an instant search index tracking Customer ID, Mobile, or Name.
+- Include an 'Add New Customer Profile' modal screen. 
+- Strict Duplication Check: Before committing a new profile, evaluate if the Name + Mobile combination matches an existing file. If a match is found, immediately freeze submission and execute an alert popup: 'CRITICAL ERROR: This customer profile already exists. Please locate their existing profile to prevent file duplication.'
+
+3. ADVANCED DISPATCH GRID & RATE MODULE
+- Build a responsive 4-tab item grid containing explicit garments:
+  * Men Section: Shirt, T-Shirt, Lower, Pajama, Kurta, Suit, Jeans, Sherwani.
+  * Women Section: Saree, Suit, Lehenga, Kurti, Top, Gown, Dupatta.
+  * Kids Section: Kids Frock, Kids Suit, Kids Shirts, Uniforms.
+  * Household Section: Blanket (Single), Blanket (Double), Bed Sheet, Curtain, Mat, Pillow Cover.
+- Selecting any garment must launch an immediate prompt requiring selection of Service Type: [Laundry], [Dry Cleaning], [Simple Press], [Steam Press].
+- Collect manual numeric entry for: [KG (Decimal input, e.g., 2.50)] and [Qty (Integer input, e.g., 5)]. Compute item subtotals instantly based on a standard background rate chart matrix.
+
+4. AUTOMATED 72-HOUR TIMELINE ENGINE & OVERRIDES
+- Default System Rule: Automatically calculate and set the 'Ready Date and Time' to exactly +72 hours from the current system timestamp.
+- Manual Adjustment Control: Provide a clean date-time picker interface allowing the operator to manually override this default to any setting ranging from 30 minutes up to 5 years (with full Date, Month, Year, Hour, and Minute adjustments).
+
+5. FINANCIAL BREAKDOWN & DISCOUNTS
+- Provide two manual text input fields for markdowns (Strictly no dropdown selections allowed; user must type values directly):
+  * Field A: Net Discount (Subtracts a flat currency value from the subtotal).
+  * Field B: Percentage Discount (Calculates a percentage markdown based on the number typed).
+- Automatically compute and display separate rows for CGST (9%) and SGST (9%) applied to the post-discount subtotal.
+
+6. TWO-FACTOR THERMAL POS LAYOUTS & WHATSAPP INTEGRATION
+- Create a print/preview screen containing two distinct print layouts:
+  * Layout A (The Tag): A narrow 58mm POS layout displaying only the unique DI Number, Item Category, Service Type, Weight/Qty parameters, and Ready Date.
+  * Layout B (The Bill): A wider 80mm professional layout displaying full store branding, Customer Details, Itemized Rows, Financial Matrix (Subtotal, Discount, CGST, SGST, Net Total), the calculated Pickup Date, an optional Custom Note, and the hardcoded terms below.
+- Hardcode these 5 rules permanently into the Bill footer:
+  #1. FABO is not liable for color fastness, threads-out, missing buttons, or any other damages.
+  #2. Report damages, missing items, or exchanged clothes to FABO within 24 hours of delivery.
+  #3. Refer to our website (www.fabonow.com) or mobile app for complete Terms and Conditions.
+  #4. We aim for on-time clothing delivery, but if delays occur due to unforeseen circumstances, we'll keep you updated on the new delivery schedule.
+  #5. We accept no liability for any loss or damage of the clothes arising due to washing, fire, burglary etc.
+- Include a 'Send WhatsApp Message' trigger that compiles a professional, polite, and fully itemized text string, launching it directly via the React Native Linking API (https://wa.me/) to the customer's phone number containing the DI Number, Order Summary, Total Cost, and Promised Pickup Date.
+-

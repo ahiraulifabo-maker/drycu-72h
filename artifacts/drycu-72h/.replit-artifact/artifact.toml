@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "DRYCU-72H"
+version = "1.0.0"
+id = "artifacts/drycu-72h"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 22958
+
+[services.development]
+run = "pnpm --filter @workspace/drycu-72h run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/drycu-72h", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/drycu-72h", "run", "serve" ]
+
+[services.env]
+PORT = "22958"
+BASE_PATH = "/"
