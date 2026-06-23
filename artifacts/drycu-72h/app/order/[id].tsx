@@ -15,6 +15,7 @@ import {
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { STORE_INFO } from '@/constants/storeInfo';
+import { printTags, printBill } from '@/utils/print';
 import { Order, OrderStatus } from '@/types';
 
 const SERVICE_ABBR: Record<string, string> = {
@@ -365,16 +366,22 @@ Thank you for choosing DRYCU-72H! ${STORE_INFO.website}`;
               {/* Print Quick Actions */}
               <View style={styles.printRow}>
                 <TouchableOpacity
-                  style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => setActiveTab('tag')}
+                  style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.primary }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    printTags(order);
+                  }}
                 >
                   <Ionicons name="pricetag" size={28} color={colors.primary} />
-                  <Text style={[styles.printCardTitle, { color: colors.foreground }]}>Print Tag</Text>
-                  <Text style={[styles.printCardSub, { color: colors.mutedForeground }]}>58mm label</Text>
+                  <Text style={[styles.printCardTitle, { color: colors.foreground }]}>Print Tags</Text>
+                  <Text style={[styles.printCardSub, { color: colors.mutedForeground }]}>58mm · {order.items.length} tag{order.items.length !== 1 ? 's' : ''}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => setActiveTab('bill')}
+                  style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.accent }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    printBill(order, customer);
+                  }}
                 >
                   <Ionicons name="document-text" size={28} color={colors.accent} />
                   <Text style={[styles.printCardTitle, { color: colors.foreground }]}>Print Bill</Text>
