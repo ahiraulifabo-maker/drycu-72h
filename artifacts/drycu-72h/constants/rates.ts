@@ -294,11 +294,33 @@ export function computeItemSubtotal(itemName: string, serviceType: ServiceType, 
   return rate[serviceType] * (qty > 0 ? qty : 1);
 }
 
+export function computeItemSubtotalWithOverrides(
+  itemName: string, serviceType: ServiceType, kg: number, qty: number,
+  overrides: Record<string, Partial<GarmentRate>>
+): number {
+  const base = RATE_CHART[itemName];
+  if (!base) return 0;
+  const effectiveRate = overrides[itemName]?.[serviceType] ?? base[serviceType];
+  if (serviceType === 'Laundry') return (effectiveRate as number) * (kg > 0 ? kg : qty);
+  return (effectiveRate as number) * (qty > 0 ? qty : 1);
+}
+
 export function getRateLabel(itemName: string, serviceType: ServiceType): string {
   const rate = RATE_CHART[itemName];
   if (!rate) return '₹0';
   if (serviceType === 'Laundry') return `₹${rate.Laundry}/kg`;
   return `₹${rate[serviceType]}/pc`;
+}
+
+export function getRateLabelWithOverrides(
+  itemName: string, serviceType: ServiceType,
+  overrides: Record<string, Partial<GarmentRate>>
+): string {
+  const base = RATE_CHART[itemName];
+  if (!base) return '₹0';
+  const r = overrides[itemName]?.[serviceType] ?? base[serviceType];
+  if (serviceType === 'Laundry') return `₹${r}/kg`;
+  return `₹${r}/pc`;
 }
 
 export const SERVICE_TYPES: ServiceType[] = ['Laundry', 'Dry Cleaning', 'Simple Press', 'Steam Press'];

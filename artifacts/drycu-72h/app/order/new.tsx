@@ -16,7 +16,7 @@ import {
 
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { CATEGORIES, GARMENTS, computeItemSubtotal, getRateLabel, SERVICE_TYPES } from '@/constants/rates';
+import { CATEGORIES, GARMENTS, computeItemSubtotalWithOverrides, getRateLabelWithOverrides, SERVICE_TYPES } from '@/constants/rates';
 import { DEFAULT_TOPUP_SERVICES } from '@/constants/topup';
 import { GARMENT_ICONS } from '@/constants/garmentIcons';
 import { Customer, DiscountType, ItemCategory, OrderItem, OrderTopUp, ServiceType } from '@/types';
@@ -45,7 +45,7 @@ interface ItemModalState {
 export default function NewOrderScreen() {
   const { customerId: paramCustomerId } = useLocalSearchParams<{ customerId?: string }>();
   const colors = useColors();
-  const { customers, addOrder, searchCustomers, topUpRates } = useApp();
+  const { customers, addOrder, searchCustomers, topUpRates, garmentRateOverrides } = useApp();
 
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
@@ -108,9 +108,10 @@ export default function NewOrderScreen() {
   const advance = parseFloat(advancePaid) || 0;
   const balance = netPayable - advance;
 
-  const modalDefaultSubtotal = computeItemSubtotal(
+  const modalDefaultSubtotal = computeItemSubtotalWithOverrides(
     itemModal.itemName, modalService,
-    parseFloat(modalKg) || 0, parseInt(modalQty) || 0
+    parseFloat(modalKg) || 0, parseInt(modalQty) || 0,
+    garmentRateOverrides
   );
   const modalCustomPriceNum = parseFloat(modalCustomPrice);
   const modalEffectiveSubtotal = modalCustomPrice.trim() !== '' && !isNaN(modalCustomPriceNum)
@@ -523,7 +524,7 @@ export default function NewOrderScreen() {
                 >
                   <Text style={[styles.serviceBtnText, { color: modalService === st ? '#fff' : colors.foreground }]}>{st}</Text>
                   <Text style={[styles.serviceBtnRate, { color: modalService === st ? 'rgba(255,255,255,0.8)' : colors.mutedForeground }]}>
-                    {getRateLabel(itemModal.itemName, st)}
+                    {getRateLabelWithOverrides(itemModal.itemName, st, garmentRateOverrides)}
                   </Text>
                 </TouchableOpacity>
               ))}

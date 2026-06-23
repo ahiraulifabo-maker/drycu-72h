@@ -2,12 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
 import { DEFAULT_TOPUP_SERVICES, TOPUP_STORAGE_KEY } from '@/constants/topup';
-import { Customer, DiscountType, Order, OrderItem, OrderStatus, OrderTopUp } from '@/types';
+import { GarmentRate } from '@/constants/rates';
+import { Customer, DiscountType, Order, OrderItem, OrderStatus, OrderTopUp, ServiceType } from '@/types';
 
 const STORAGE_KEYS = {
   CUSTOMERS: 'drycu_customers',
   ORDERS: 'drycu_orders',
   NEXT_DI: 'drycu_next_di',
+  GARMENT_RATES: 'drycu_garment_rates',
 };
 
 interface AppContextType {
@@ -16,6 +18,7 @@ interface AppContextType {
   nextDI: number;
   isLoaded: boolean;
   topUpRates: Record<string, number>;
+  garmentRateOverrides: Record<string, Partial<GarmentRate>>;
 
   addCustomer: (data: Omit<Customer, 'id' | 'createdAt'>) => Promise<Customer | null>;
   updateCustomer: (id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>) => Promise<void>;
@@ -25,6 +28,8 @@ interface AppContextType {
   getCustomer: (id: string) => Customer | undefined;
 
   updateTopUpRate: (name: string, rate: number) => Promise<void>;
+  updateGarmentRate: (itemName: string, service: ServiceType, rate: number) => Promise<void>;
+  resetGarmentRate: (itemName: string, service: ServiceType) => Promise<void>;
 
   addOrder: (data: {
     customerId: string;
@@ -81,20 +86,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [nextDI, setNextDI] = useState(1);
   const [isLoaded, setIsLoaded] = useState(false);
   const [topUpRates, setTopUpRates] = useState<Record<string, number>>(buildDefaultTopUpRates());
+  const [garmentRateOverrides, setGarmentRateOverrides] = useState<Record<string, Partial<GarmentRate>>>({});
 
   useEffect(() => {
     (async () => {
       try {
-        const [c, o, d, t] = await Promise.all([
+        const [c, o, d, t, g] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.CUSTOMERS),
           AsyncStorage.getItem(STORAGE_KEYS.ORDERS),
           AsyncStorage.getItem(STORAGE_KEYS.NEXT_DI),
           AsyncStorage.getItem(TOPUP_STORAGE_KEY),
+          AsyncStorage.getItem(STORAGE_KEYS.GARMENT_RATES),
         ]);
         if (c) setCustomers(JSON.parse(c));
         if (o) setOrders(JSON.parse(o));
         if (d) setNextDI(parseInt(d, 10));
         if (t) setTopUpRates({ ...buildDefaultTopUpRates(), ...JSON.parse(t) });
+        if (g) setGarmentRateOverrides(JSON.parse(g));
       } catch (e) {
         // ignore
       } finally {
@@ -112,6 +120,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const updated = { ...topUpRates, [name]: rate };
     setTopUpRates(updated);
     await AsyncStorage.setItem(TOPUP_STORAGE_KEY, JSON.stringify(updated));
+  };
+
+  const updateGarmentRate = async (itemName: string, service: ServiceType, rate: number) => {
+    const updated = {
+      ...garmentRateOverrides,
+      [itemName]: { ...(garmentRateOverrides[itemName] ?? {}), [service]: rate },
+    };
+    setGarmentRateOverrides(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.GARMENT_RATES, JSON.stringify(updated));
+  };
+
+  const resetGarmentRate = async (itemName: string, service: ServiceType) => {
+    const item = { ...(garmentRateOverrides[itemName] ?? {}) };
+    delete item[service as keyof GarmentRate];
+    const updated = { ...garmentRateOverrides, [itemName]: item };
+    if (Object.keys(item).length === 0) delete updated[itemName];
+    setGarmentRateOverrides(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.GARMENT_RATES, JSON.stringify(updated));
   };
 
   const findDuplicate = useCallback((name: string, mobile: string, excludeId?: string): Customer | null => {
@@ -224,9 +250,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      customers, orders, nextDI, isLoaded, topUpRates,
+      customers, orders, nextDI, isLoaded, topUpRates, garmentRateOverrides,
       addCustomer, updateCustomer, deleteCustomer, findDuplicate, searchCustomers, getCustomer,
-      updateTopUpRate,
+      updateTopUpRate, updateGarmentRate, resetGarmentRate,
       addOrder, updateOrderStatus, deleteOrder, getOrdersForCustomer, getOrder,
     }}>
       {children}
