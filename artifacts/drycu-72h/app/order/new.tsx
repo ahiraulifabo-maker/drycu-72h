@@ -58,6 +58,7 @@ export default function NewOrderScreen() {
   const [modalService, setModalService] = useState<ServiceType>('Dry Cleaning');
   const [modalKg, setModalKg] = useState('0');
   const [modalQty, setModalQty] = useState('1');
+  const [modalCustomPrice, setModalCustomPrice] = useState('');
 
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
 
@@ -107,21 +108,25 @@ export default function NewOrderScreen() {
   const advance = parseFloat(advancePaid) || 0;
   const balance = netPayable - advance;
 
-  const modalSubtotal = computeItemSubtotal(
+  const modalDefaultSubtotal = computeItemSubtotal(
     itemModal.itemName, modalService,
     parseFloat(modalKg) || 0, parseInt(modalQty) || 0
   );
+  const modalCustomPriceNum = parseFloat(modalCustomPrice);
+  const modalEffectiveSubtotal = modalCustomPrice.trim() !== '' && !isNaN(modalCustomPriceNum)
+    ? modalCustomPriceNum
+    : modalDefaultSubtotal;
 
   const openItemModal = (category: ItemCategory, itemName: string) => {
     setItemModal({ visible: true, category, itemName });
     setModalService('Dry Cleaning');
     setModalKg('0');
     setModalQty('1');
+    setModalCustomPrice('');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const addItemToOrder = () => {
-    const sub = computeItemSubtotal(itemModal.itemName, modalService, parseFloat(modalKg) || 0, parseInt(modalQty) || 0);
     const item: OrderItem = {
       id: generateItemId(),
       category: itemModal.category,
@@ -130,7 +135,7 @@ export default function NewOrderScreen() {
       kg: parseFloat(modalKg) || 0,
       qty: parseInt(modalQty) || 0,
       ratePerUnit: 0,
-      subtotal: sub,
+      subtotal: modalEffectiveSubtotal,
     };
     setOrderItems(prev => [...prev, item]);
     setItemModal({ visible: false, category: 'Men', itemName: '' });
@@ -514,7 +519,7 @@ export default function NewOrderScreen() {
                       ? { backgroundColor: colors.primary }
                       : { backgroundColor: colors.muted, borderColor: colors.border, borderWidth: 1 },
                   ]}
-                  onPress={() => { setModalService(st); Haptics.selectionAsync(); }}
+                  onPress={() => { setModalService(st); setModalCustomPrice(''); Haptics.selectionAsync(); }}
                 >
                   <Text style={[styles.serviceBtnText, { color: modalService === st ? '#fff' : colors.foreground }]}>{st}</Text>
                   <Text style={[styles.serviceBtnRate, { color: modalService === st ? 'rgba(255,255,255,0.8)' : colors.mutedForeground }]}>
@@ -531,7 +536,7 @@ export default function NewOrderScreen() {
                   style={[styles.modalInput, { borderColor: colors.border, color: colors.foreground }]}
                   keyboardType="decimal-pad"
                   value={modalKg}
-                  onChangeText={setModalKg}
+                  onChangeText={t => { setModalKg(t); setModalCustomPrice(''); }}
                   placeholder="0.00"
                   placeholderTextColor={colors.mutedForeground}
                 />
@@ -542,16 +547,42 @@ export default function NewOrderScreen() {
                   style={[styles.modalInput, { borderColor: colors.border, color: colors.foreground }]}
                   keyboardType="number-pad"
                   value={modalQty}
-                  onChangeText={setModalQty}
+                  onChangeText={t => { setModalQty(t); setModalCustomPrice(''); }}
                   placeholder="1"
                   placeholderTextColor={colors.mutedForeground}
                 />
               </View>
             </View>
 
-            <View style={[styles.subtotalBar, { backgroundColor: colors.secondary }]}>
-              <Text style={[styles.subtotalLabel, { color: colors.mutedForeground }]}>Item Subtotal</Text>
-              <Text style={[styles.subtotalValue, { color: colors.primary }]}>₹{modalSubtotal.toFixed(2)}</Text>
+            {/* Custom price override */}
+            <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>
+              Custom Price ₹ <Text style={{ fontSize: 10 }}>(leave blank to use default rate)</Text>
+            </Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  borderColor: modalCustomPrice.trim() !== '' ? colors.warning : colors.border,
+                  color: colors.foreground,
+                  borderWidth: modalCustomPrice.trim() !== '' ? 2 : 1,
+                },
+              ]}
+              keyboardType="decimal-pad"
+              value={modalCustomPrice}
+              onChangeText={setModalCustomPrice}
+              placeholder={`Default: ₹${modalDefaultSubtotal.toFixed(2)}`}
+              placeholderTextColor={colors.mutedForeground}
+            />
+
+            <View style={[styles.subtotalBar, {
+              backgroundColor: modalCustomPrice.trim() !== '' ? '#FFF3CD' : colors.secondary,
+            }]}>
+              <Text style={[styles.subtotalLabel, { color: colors.mutedForeground }]}>
+                {modalCustomPrice.trim() !== '' ? '⚠ Custom Price' : 'Auto Price'}
+              </Text>
+              <Text style={[styles.subtotalValue, {
+                color: modalCustomPrice.trim() !== '' ? colors.warning : colors.primary,
+              }]}>₹{modalEffectiveSubtotal.toFixed(2)}</Text>
             </View>
 
             <View style={styles.modalBtns}>
