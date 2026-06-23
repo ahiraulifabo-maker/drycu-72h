@@ -22,7 +22,13 @@
       "package": "com.drycu72h.app"
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "name": "DRYCU-72H",
+      "shortName": "DRYCU",
+      "display": "standalone",
+      "themeColor": "#0052CC",
+      "backgroundColor": "#F4F6FB",
+      "bundler": "metro"
     },
     "plugins": [
       [

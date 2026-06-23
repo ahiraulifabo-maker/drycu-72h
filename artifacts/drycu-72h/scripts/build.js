@@ -505,6 +505,55 @@ function updateManifests(manifests, timestamp, baseUrl, assetsByHash) {
   console.log("Manifests updated");
 }
 
+async function buildWeb(domain) {
+  console.log("Building web bundle (expo export --platform web)...");
+
+  const webOutputDir = path.join(projectRoot, "static-build", "web");
+  if (fs.existsSync(webOutputDir)) {
+    fs.rmSync(webOutputDir, { recursive: true });
+  }
+
+  await new Promise((resolve, reject) => {
+    const webProcess = spawn(
+      "pnpm",
+      ["exec", "expo", "export", "--platform", "web", "--output-dir", "static-build/web"],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          EXPO_PUBLIC_DOMAIN: domain,
+          NODE_ENV: "production",
+        },
+      },
+    );
+
+    if (webProcess.stdout) {
+      webProcess.stdout.on("data", (d) => {
+        const out = d.toString().trim();
+        if (out) console.log(`[Web] ${out}`);
+      });
+    }
+    if (webProcess.stderr) {
+      webProcess.stderr.on("data", (d) => {
+        const out = d.toString().trim();
+        if (out) console.error(`[Web] ${out}`);
+      });
+    }
+
+    webProcess.on("close", (code) => {
+      if (code === 0) {
+        console.log("Web bundle built successfully");
+        resolve();
+      } else {
+        reject(new Error(`expo export --platform web failed with exit code ${code}`));
+      }
+    });
+
+    webProcess.on("error", reject);
+  });
+}
+
 async function main() {
   console.log("Building static Expo Go deployment...");
 
@@ -553,14 +602,20 @@ async function main() {
     updateBundleUrls(timestamp, baseUrl);
   }
 
-  console.log("Updating manifests and creating landing page...");
+  console.log("Updating manifests...");
   updateManifests(manifests, timestamp, baseUrl, assetsByHash);
 
-  console.log("Build complete! Deploy to:", baseUrl);
-
+  // Stop Metro before starting the web export (avoids port conflict)
   if (metroProcess) {
     metroProcess.kill();
+    metroProcess = null;
+    // Give Metro a moment to fully release the port
+    await new Promise((r) => setTimeout(r, 2000));
   }
+
+  await buildWeb(domain);
+
+  console.log("Build complete! Deploy to:", baseUrl);
   process.exit(0);
 }
 

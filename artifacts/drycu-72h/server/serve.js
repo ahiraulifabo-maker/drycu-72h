@@ -1,12 +1,12 @@
 /**
- * Standalone production server for Expo static builds.
+ * Production server for DRYCU-72H.
  *
- * Serves the output of build.js (static-build/) with two special routes:
- * - GET / or /manifest with expo-platform header → platform manifest JSON
- * - GET / without expo-platform → landing page HTML
- * Everything else falls through to static file serving from ./static-build/.
+ * Routing logic:
+ * - Requests with `expo-platform: ios|android` header → serve OTA manifest (Expo Go)
+ * - All other requests (browsers on desktop / mobile) → serve static web bundle
+ *   with SPA fallback (index.html for unknown paths so React Navigation works)
  *
- * Zero external dependencies — uses only Node.js built-ins (http, fs, path).
+ * Zero external dependencies — uses only Node.js built-ins.
  */
 
 const http = require("http");
@@ -14,7 +14,7 @@ const fs = require("fs");
 const path = require("path");
 
 const STATIC_ROOT = path.resolve(__dirname, "..", "static-build");
-const TEMPLATE_PATH = path.resolve(__dirname, "templates", "landing-page.html");
+const WEB_ROOT = path.join(STATIC_ROOT, "web");
 const basePath = (process.env.BASE_PATH || "/").replace(/\/+$/, "");
 
 const MIME_TYPES = {
@@ -33,29 +33,23 @@ const MIME_TYPES = {
   ".ttf": "font/ttf",
   ".otf": "font/otf",
   ".map": "application/json",
+  ".webmanifest": "application/manifest+json",
 };
 
-function getAppName() {
-  try {
-    const appJsonPath = path.resolve(__dirname, "..", "app.json");
-    const appJson = JSON.parse(fs.readFileSync(appJsonPath, "utf-8"));
-    return appJson.expo?.name || "App Landing Page";
-  } catch {
-    return "App Landing Page";
-  }
+function mimeFor(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return MIME_TYPES[ext] || "application/octet-stream";
 }
+
+// ── Expo Go manifest serving ────────────────────────────────────────────────
 
 function serveManifest(platform, res) {
   const manifestPath = path.join(STATIC_ROOT, platform, "manifest.json");
-
   if (!fs.existsSync(manifestPath)) {
     res.writeHead(404, { "content-type": "application/json" });
-    res.end(
-      JSON.stringify({ error: `Manifest not found for platform: ${platform}` }),
-    );
+    res.end(JSON.stringify({ error: `Manifest not found for platform: ${platform}` }));
     return;
   }
-
   const manifest = fs.readFileSync(manifestPath, "utf-8");
   res.writeHead(200, {
     "content-type": "application/json",
@@ -65,71 +59,73 @@ function serveManifest(platform, res) {
   res.end(manifest);
 }
 
-function serveLandingPage(req, res, landingPageTemplate, appName) {
-  const forwardedProto = req.headers["x-forwarded-proto"];
-  const protocol = forwardedProto || "https";
-  const host = req.headers["x-forwarded-host"] || req.headers["host"];
-  const baseUrl = `${protocol}://${host}`;
-  const expsUrl = `${host}`;
+// ── Web bundle serving ──────────────────────────────────────────────────────
 
-  const html = landingPageTemplate
-    .replace(/BASE_URL_PLACEHOLDER/g, baseUrl)
-    .replace(/EXPS_URL_PLACEHOLDER/g, expsUrl)
-    .replace(/APP_NAME_PLACEHOLDER/g, appName);
-
-  res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  res.end(html);
+function serveFile(filePath, res) {
+  const content = fs.readFileSync(filePath);
+  res.writeHead(200, { "content-type": mimeFor(filePath) });
+  res.end(content);
 }
 
-function serveStaticFile(urlPath, res) {
-  const safePath = path.normalize(urlPath).replace(/^(\.\.(\/|\\|$))+/, "");
-  const filePath = path.join(STATIC_ROOT, safePath);
+function serveWebApp(pathname, res) {
+  // Normalize: strip base path prefix
+  let relPath = pathname;
+  if (basePath && relPath.startsWith(basePath)) {
+    relPath = relPath.slice(basePath.length) || "/";
+  }
 
-  if (!filePath.startsWith(STATIC_ROOT)) {
+  // Try exact file match inside web root
+  const candidate = path.join(WEB_ROOT, relPath);
+
+  // Security: stay inside WEB_ROOT
+  if (!candidate.startsWith(WEB_ROOT)) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
   }
 
-  if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-    res.writeHead(404);
-    res.end("Not Found");
+  if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+    serveFile(candidate, res);
     return;
   }
 
-  const ext = path.extname(filePath).toLowerCase();
-  const contentType = MIME_TYPES[ext] || "application/octet-stream";
-  const content = fs.readFileSync(filePath);
-  res.writeHead(200, { "content-type": contentType });
-  res.end(content);
+  // SPA fallback — React Navigation handles routing client-side
+  const indexPath = path.join(WEB_ROOT, "index.html");
+  if (fs.existsSync(indexPath)) {
+    serveFile(indexPath, res);
+    return;
+  }
+
+  res.writeHead(404, { "content-type": "text/plain" });
+  res.end("Web build not found. Please redeploy the app.");
 }
 
-const landingPageTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
-const appName = getAppName();
+// ── Server ──────────────────────────────────────────────────────────────────
+
+const webBuildExists = fs.existsSync(path.join(WEB_ROOT, "index.html"));
+if (webBuildExists) {
+  console.log("Web build found — serving web app to browsers");
+} else {
+  console.warn("WARNING: No web build found at static-build/web/index.html");
+  console.warn("Browser visitors will see a 404. Redeploy to fix.");
+}
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
-  let pathname = url.pathname;
+  const pathname = url.pathname;
 
-  if (basePath && pathname.startsWith(basePath)) {
-    pathname = pathname.slice(basePath.length) || "/";
+  // Expo Go native manifest requests
+  const platform = req.headers["expo-platform"];
+  if (platform === "ios" || platform === "android") {
+    return serveManifest(platform, res);
   }
 
-  if (pathname === "/" || pathname === "/manifest") {
-    const platform = req.headers["expo-platform"];
-    if (platform === "ios" || platform === "android") {
-      return serveManifest(platform, res);
-    }
-
-    if (pathname === "/") {
-      return serveLandingPage(req, res, landingPageTemplate, appName);
-    }
-  }
-
-  serveStaticFile(pathname, res);
+  // Everything else → web app
+  serveWebApp(pathname, res);
 });
 
 const port = parseInt(process.env.PORT || "3000", 10);
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Serving static Expo build on port ${port}`);
+  console.log(`DRYCU-72H serving on port ${port}`);
+  console.log(`Web app: http://localhost:${port}`);
 });
