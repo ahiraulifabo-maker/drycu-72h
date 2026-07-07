@@ -1,0 +1,2 @@
+- [DRYCU-72H responsive layout](drycu72h-responsive.md) — sidebar at ≥768px; NativeTabs gated behind narrow-only to keep sidebar on wide screens
+- [DRYCU-72H pickup mode](drycu72h-pickup-mode.md) — PickupMode type + Order field; toggle in Discount section of new.tsx; badge in order detail

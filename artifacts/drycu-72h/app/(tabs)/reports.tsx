@@ -14,6 +14,7 @@ import {
 
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { useLayout } from '@/hooks/useLayout';
 import { Order } from '@/types';
 
 type FilterMode = 'today' | 'week' | 'month' | 'year' | 'custom_month' | 'custom_date';
@@ -35,22 +36,11 @@ function filterOrders(orders: Order[], mode: FilterMode, customMonth: number, cu
   const now = new Date();
   return orders.filter(o => {
     const d = new Date(o.createdAt);
-    if (mode === 'today') {
-      return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }
-    if (mode === 'week') {
-      const { start, end } = getWeekRange(now);
-      return d >= start && d <= end;
-    }
-    if (mode === 'month') {
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }
-    if (mode === 'year') {
-      return d.getFullYear() === now.getFullYear();
-    }
-    if (mode === 'custom_month') {
-      return d.getMonth() === customMonth && d.getFullYear() === customYear;
-    }
+    if (mode === 'today') return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    if (mode === 'week') { const { start, end } = getWeekRange(now); return d >= start && d <= end; }
+    if (mode === 'month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    if (mode === 'year') return d.getFullYear() === now.getFullYear();
+    if (mode === 'custom_month') return d.getMonth() === customMonth && d.getFullYear() === customYear;
     if (mode === 'custom_date') {
       const [y, m, day2] = customDate.split('-').map(Number);
       return d.getFullYear() === y && d.getMonth() === m - 1 && d.getDate() === day2;
@@ -76,6 +66,7 @@ function FilterLabel(mode: FilterMode, customMonth: number, customYear: number, 
 export default function ReportsScreen() {
   const colors = useColors();
   const { orders, getCustomer } = useApp();
+  const { isWide } = useLayout();
 
   const now = new Date();
   const [mode, setMode] = useState<FilterMode>('month');
@@ -92,17 +83,16 @@ export default function ReportsScreen() {
   const [dateInput, setDateInput] = useState(customDate);
 
   const filtered = useMemo(() =>
-    filterOrders(orders, mode, customMonth, customYear, customDate)
-      .sort((a, b) => a.diNumber - b.diNumber),
+    filterOrders(orders, mode, customMonth, customYear, customDate).sort((a, b) => a.diNumber - b.diNumber),
     [orders, mode, customMonth, customYear, customDate]
   );
 
   const totalRevenue = filtered.reduce((s, o) => s + o.netPayable, 0);
-  const totalGross = filtered.reduce((s, o) => s + o.grossAmount, 0);
+  const totalGross   = filtered.reduce((s, o) => s + o.grossAmount, 0);
   const totalDiscount = filtered.reduce((s, o) => s + o.discountAmount, 0);
   const uniqueCustomers = new Set(filtered.map(o => o.customerId)).size;
 
-  const webTop = Platform.OS === 'web' ? 67 : 0;
+  const webTop = !isWide && Platform.OS === 'web' ? 67 : 0;
 
   const FILTER_BTNS: { label: string; value: FilterMode }[] = [
     { label: 'Today', value: 'today' },
@@ -127,16 +117,9 @@ export default function ReportsScreen() {
                 : { backgroundColor: colors.muted, borderColor: colors.border, borderWidth: 1 },
             ]}
             onPress={() => {
-              if (f.value === 'custom_month') {
-                setPickerYear(customYear.toString());
-                setPickerMonth(customMonth);
-                setShowMonthPicker(true);
-              } else if (f.value === 'custom_date') {
-                setDateInput(customDate);
-                setShowDatePicker(true);
-              } else {
-                setMode(f.value);
-              }
+              if (f.value === 'custom_month') { setPickerYear(customYear.toString()); setPickerMonth(customMonth); setShowMonthPicker(true); }
+              else if (f.value === 'custom_date') { setDateInput(customDate); setShowDatePicker(true); }
+              else setMode(f.value);
             }}
           >
             <Text style={[styles.filterPillText, { color: mode === f.value ? '#fff' : colors.mutedForeground }]}>
@@ -155,8 +138,8 @@ export default function ReportsScreen() {
           </Text>
         </View>
 
-        {/* Summary Cards */}
-        <View style={styles.summaryGrid}>
+        {/* Summary Cards — 4 across on wide, 2×2 on narrow */}
+        <View style={[styles.summaryGrid, isWide && styles.summaryGridWide]}>
           <View style={[styles.summaryCard, { backgroundColor: colors.primary }]}>
             <Text style={styles.summaryCardValue}>{filtered.length}</Text>
             <Text style={styles.summaryCardLabel}>Total Orders</Text>
@@ -189,22 +172,20 @@ export default function ReportsScreen() {
           <View style={[styles.emptyBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Ionicons name="bar-chart-outline" size={48} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No orders in this period</Text>
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              Try selecting a different date range
-            </Text>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Try selecting a different date range</Text>
           </View>
         ) : (
           <View style={[styles.tableCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {/* Table Header */}
             <View style={[styles.tableHeader, { backgroundColor: colors.muted, borderBottomColor: colors.border }]}>
-              <Text style={[styles.thSNo, { color: colors.mutedForeground }]}>S.No</Text>
-              <Text style={[styles.thName, { color: colors.mutedForeground }]}>Customer Name</Text>
-              <Text style={[styles.thDI, { color: colors.mutedForeground }]}>DI No.</Text>
-              <Text style={[styles.thDate, { color: colors.mutedForeground }]}>Date</Text>
+              <Text style={[styles.thSNo,    { color: colors.mutedForeground }]}>S.No</Text>
+              <Text style={[styles.thName,   { color: colors.mutedForeground }]}>Customer Name</Text>
+              <Text style={[styles.thDI,     { color: colors.mutedForeground }]}>DI No.</Text>
+              {isWide && <Text style={[styles.thStatus, { color: colors.mutedForeground }]}>Status</Text>}
+              <Text style={[styles.thDate,   { color: colors.mutedForeground }]}>Date</Text>
+              {isWide && <Text style={[styles.thDiscount, { color: colors.mutedForeground }]}>Disc.</Text>}
               <Text style={[styles.thAmount, { color: colors.mutedForeground }]}>Amount</Text>
             </View>
 
-            {/* Table Rows */}
             {filtered.map((order, idx) => {
               const customer = getCustomer(order.customerId);
               const statusColor: Record<string, string> = {
@@ -229,9 +210,17 @@ export default function ReportsScreen() {
                     <View style={[styles.statusDot, { backgroundColor: statusColor[order.status] }]} />
                   </View>
                   <Text style={[styles.diCell, { color: colors.primary }]}>{order.id}</Text>
+                  {isWide && (
+                    <Text style={[styles.statusCell, { color: statusColor[order.status] }]}>{order.status}</Text>
+                  )}
                   <Text style={[styles.dateCell, { color: colors.mutedForeground }]}>
                     {new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                   </Text>
+                  {isWide && (
+                    <Text style={[styles.discountCell, { color: order.discountAmount > 0 ? colors.destructive : colors.mutedForeground }]}>
+                      {order.discountAmount > 0 ? `-₹${order.discountAmount.toFixed(0)}` : '—'}
+                    </Text>
+                  )}
                   <Text style={[styles.amountCell, { color: colors.foreground }]}>
                     ₹{order.netPayable.toFixed(0)}
                   </Text>
@@ -239,14 +228,11 @@ export default function ReportsScreen() {
               );
             })}
 
-            {/* Table Footer */}
             <View style={[styles.tableFooter, { backgroundColor: colors.secondary, borderTopColor: colors.border }]}>
               <Text style={[styles.footerLabel, { color: colors.primary }]}>
                 {filtered.length} orders · {uniqueCustomers} customers
               </Text>
-              <Text style={[styles.footerTotal, { color: colors.primary }]}>
-                ₹{totalRevenue.toFixed(2)}
-              </Text>
+              <Text style={[styles.footerTotal, { color: colors.primary }]}>₹{totalRevenue.toFixed(2)}</Text>
             </View>
           </View>
         )}
@@ -258,65 +244,33 @@ export default function ReportsScreen() {
           <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
             <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>Select Month & Year</Text>
-
             <View style={styles.yearRow}>
-              <TouchableOpacity
-                onPress={() => setPickerYear(y => (parseInt(y) - 1).toString())}
-                style={[styles.yearArrow, { backgroundColor: colors.muted }]}
-              >
+              <TouchableOpacity onPress={() => setPickerYear(y => (parseInt(y) - 1).toString())} style={[styles.yearArrow, { backgroundColor: colors.muted }]}>
                 <Ionicons name="chevron-back" size={20} color={colors.primary} />
               </TouchableOpacity>
               <TextInput
                 style={[styles.yearInput, { color: colors.foreground, borderColor: colors.border }]}
-                value={pickerYear}
-                onChangeText={setPickerYear}
-                keyboardType="number-pad"
-                maxLength={4}
+                value={pickerYear} onChangeText={setPickerYear} keyboardType="number-pad" maxLength={4}
               />
-              <TouchableOpacity
-                onPress={() => setPickerYear(y => (parseInt(y) + 1).toString())}
-                style={[styles.yearArrow, { backgroundColor: colors.muted }]}
-              >
+              <TouchableOpacity onPress={() => setPickerYear(y => (parseInt(y) + 1).toString())} style={[styles.yearArrow, { backgroundColor: colors.muted }]}>
                 <Ionicons name="chevron-forward" size={20} color={colors.primary} />
               </TouchableOpacity>
             </View>
-
             <View style={styles.monthGrid}>
               {MONTHS.map((m, i) => (
-                <TouchableOpacity
-                  key={m}
-                  style={[
-                    styles.monthBtn,
-                    pickerMonth === i
-                      ? { backgroundColor: colors.primary }
-                      : { backgroundColor: colors.muted, borderColor: colors.border, borderWidth: 1 },
-                  ]}
-                  onPress={() => setPickerMonth(i)}
-                >
-                  <Text style={[styles.monthBtnText, { color: pickerMonth === i ? '#fff' : colors.foreground }]}>
-                    {m}
-                  </Text>
+                <TouchableOpacity key={m} style={[styles.monthBtn, pickerMonth === i ? { backgroundColor: colors.primary } : { backgroundColor: colors.muted, borderColor: colors.border, borderWidth: 1 }]} onPress={() => setPickerMonth(i)}>
+                  <Text style={[styles.monthBtnText, { color: pickerMonth === i ? '#fff' : colors.foreground }]}>{m}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-
             <View style={styles.modalBtns}>
-              <TouchableOpacity
-                style={[styles.modalCancelBtn, { borderColor: colors.border }]}
-                onPress={() => setShowMonthPicker(false)}
-              >
+              <TouchableOpacity style={[styles.modalCancelBtn, { borderColor: colors.border }]} onPress={() => setShowMonthPicker(false)}>
                 <Text style={[styles.modalCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalApplyBtn, { backgroundColor: colors.primary }]}
-                onPress={() => {
-                  const y = parseInt(pickerYear) || now.getFullYear();
-                  setCustomMonth(pickerMonth);
-                  setCustomYear(y);
-                  setMode('custom_month');
-                  setShowMonthPicker(false);
-                }}
-              >
+              <TouchableOpacity style={[styles.modalApplyBtn, { backgroundColor: colors.primary }]} onPress={() => {
+                const y = parseInt(pickerYear) || now.getFullYear();
+                setCustomMonth(pickerMonth); setCustomYear(y); setMode('custom_month'); setShowMonthPicker(false);
+              }}>
                 <Text style={styles.modalApplyText}>Apply</Text>
               </TouchableOpacity>
             </View>
@@ -330,21 +284,13 @@ export default function ReportsScreen() {
           <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
             <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>Select Date</Text>
-            <Text style={[styles.modalSubtitle, { color: colors.mutedForeground }]}>
-              Enter date in YYYY-MM-DD format
-            </Text>
+            <Text style={[styles.modalSubtitle, { color: colors.mutedForeground }]}>Enter date in YYYY-MM-DD format</Text>
             <TextInput
               style={[styles.dateInput, { borderColor: colors.border, color: colors.foreground }]}
-              value={dateInput}
-              onChangeText={setDateInput}
-              placeholder="2026-06-22"
-              placeholderTextColor={colors.mutedForeground}
-              keyboardType="numbers-and-punctuation"
-              maxLength={10}
+              value={dateInput} onChangeText={setDateInput} placeholder="2026-06-22"
+              placeholderTextColor={colors.mutedForeground} keyboardType="numbers-and-punctuation" maxLength={10}
             />
-            <Text style={[styles.dateHint, { color: colors.mutedForeground }]}>
-              Quick Selects:
-            </Text>
+            <Text style={[styles.dateHint, { color: colors.mutedForeground }]}>Quick Selects:</Text>
             <View style={styles.quickDateRow}>
               {[-2, -1, 0].map(offset => {
                 const d = new Date(now);
@@ -352,31 +298,17 @@ export default function ReportsScreen() {
                 const label = offset === 0 ? 'Today' : offset === -1 ? 'Yesterday' : `${d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
                 const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                 return (
-                  <TouchableOpacity
-                    key={offset}
-                    style={[styles.quickDateBtn, { backgroundColor: colors.secondary, borderColor: colors.primary }]}
-                    onPress={() => setDateInput(val)}
-                  >
+                  <TouchableOpacity key={offset} style={[styles.quickDateBtn, { backgroundColor: colors.secondary, borderColor: colors.primary }]} onPress={() => setDateInput(val)}>
                     <Text style={[styles.quickDateText, { color: colors.primary }]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
             <View style={styles.modalBtns}>
-              <TouchableOpacity
-                style={[styles.modalCancelBtn, { borderColor: colors.border }]}
-                onPress={() => setShowDatePicker(false)}
-              >
+              <TouchableOpacity style={[styles.modalCancelBtn, { borderColor: colors.border }]} onPress={() => setShowDatePicker(false)}>
                 <Text style={[styles.modalCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalApplyBtn, { backgroundColor: colors.primary }]}
-                onPress={() => {
-                  setCustomDate(dateInput);
-                  setMode('custom_date');
-                  setShowDatePicker(false);
-                }}
-              >
+              <TouchableOpacity style={[styles.modalApplyBtn, { backgroundColor: colors.primary }]} onPress={() => { setCustomDate(dateInput); setMode('custom_date'); setShowDatePicker(false); }}>
                 <Text style={styles.modalApplyText}>Apply</Text>
               </TouchableOpacity>
             </View>
@@ -397,6 +329,7 @@ const styles = StyleSheet.create({
   periodBar: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10 },
   periodText: { fontSize: 14, fontFamily: 'Inter_700Bold' },
   summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  summaryGridWide: { flexWrap: 'nowrap' },
   summaryCard: { flex: 1, minWidth: '45%', borderRadius: 12, padding: 14, gap: 4 },
   summaryCardValue: { fontSize: 22, fontFamily: 'Inter_700Bold', color: '#fff' },
   summaryCardLabel: { fontSize: 12, fontFamily: 'Inter_400Regular', color: 'rgba(255,255,255,0.85)' },
@@ -406,42 +339,26 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 17, fontFamily: 'Inter_600SemiBold' },
   emptyText: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center' },
   tableCard: { borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
-  tableHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    gap: 6,
-  },
-  thSNo: { width: 34, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', textAlign: 'center' },
-  thName: { flex: 1, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' },
-  thDI: { width: 72, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' },
-  thDate: { width: 52, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' },
-  thAmount: { width: 60, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', textAlign: 'right' },
-  tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    gap: 6,
-  },
+  tableHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, gap: 6 },
+  thSNo:      { width: 34, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', textAlign: 'center' },
+  thName:     { flex: 1,   fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' },
+  thDI:       { width: 72, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' },
+  thStatus:   { width: 64, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' },
+  thDate:     { width: 52, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' },
+  thDiscount: { width: 56, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', textAlign: 'right' },
+  thAmount:   { width: 60, fontSize: 10, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', textAlign: 'right' },
+  tableRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 1, gap: 6 },
   snoCell: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   snoText: { fontSize: 12, fontFamily: 'Inter_700Bold' },
   nameCell: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   customerName: { flex: 1, fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   statusDot: { width: 7, height: 7, borderRadius: 3.5, flexShrink: 0 },
-  diCell: { width: 72, fontSize: 12, fontFamily: 'Inter_700Bold' },
-  dateCell: { width: 52, fontSize: 11, fontFamily: 'Inter_400Regular' },
-  amountCell: { width: 60, fontSize: 13, fontFamily: 'Inter_700Bold', textAlign: 'right' },
-  tableFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 14,
-    borderTopWidth: 1,
-  },
+  diCell:       { width: 72, fontSize: 12, fontFamily: 'Inter_700Bold' },
+  statusCell:   { width: 64, fontSize: 11, fontFamily: 'Inter_600SemiBold' },
+  dateCell:     { width: 52, fontSize: 11, fontFamily: 'Inter_400Regular' },
+  discountCell: { width: 56, fontSize: 12, fontFamily: 'Inter_500Medium', textAlign: 'right' },
+  amountCell:   { width: 60, fontSize: 13, fontFamily: 'Inter_700Bold', textAlign: 'right' },
+  tableFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderTopWidth: 1 },
   footerLabel: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   footerTotal: { fontSize: 16, fontFamily: 'Inter_700Bold' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },

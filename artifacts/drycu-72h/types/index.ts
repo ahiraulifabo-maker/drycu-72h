@@ -15,6 +15,7 @@ export type ServiceType = 'Laundry' | 'Dry Cleaning' | 'Simple Press' | 'Steam P
 export type ItemCategory = 'Men' | 'Women' | 'Kids' | 'Household' | 'Shoes' | 'Others';
 export type OrderStatus = 'Pending' | 'Ready' | 'Delivered';
 export type DiscountType = 'none' | 'flat' | 'percentage';
+export type PickupMode = 'store' | 'home';
 
 export interface OrderItem {
   id: string;
@@ -50,6 +51,7 @@ export interface Order {
   advancePaid: number;
   bookedBy?: string;
   note?: string;
+  pickupMode?: PickupMode;
   createdAt: string;
   pickupDeadline: string;
   status: OrderStatus;

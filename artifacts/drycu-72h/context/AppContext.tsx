@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 
 import { DEFAULT_TOPUP_SERVICES, TOPUP_STORAGE_KEY } from '@/constants/topup';
 import { GarmentRate } from '@/constants/rates';
-import { Customer, DiscountType, Order, OrderItem, OrderStatus, OrderTopUp, ServiceType } from '@/types';
+import { Customer, DiscountType, Order, OrderItem, OrderStatus, OrderTopUp, PickupMode, ServiceType } from '@/types';
 
 const STORAGE_KEYS = {
   CUSTOMERS: 'drycu_customers',
@@ -41,6 +41,7 @@ interface AppContextType {
     advancePaid: number;
     bookedBy?: string;
     note?: string;
+    pickupMode?: PickupMode;
   }) => Promise<Order>;
   updateOrderStatus: (id: string, status: OrderStatus) => Promise<void>;
   deleteOrder: (id: string) => Promise<void>;
@@ -194,6 +195,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     advancePaid: number;
     bookedBy?: string;
     note?: string;
+    pickupMode?: PickupMode;
   }): Promise<Order> => {
     const { grossAmount, discountAmount, cgstAmount, sgstAmount, netPayable } =
       computeFinancials(data.items, data.topUps, data.discountType, data.discountValue);
@@ -214,6 +216,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       advancePaid: data.advancePaid,
       bookedBy: data.bookedBy,
       note: data.note,
+      pickupMode: data.pickupMode ?? 'store',
       createdAt: new Date().toISOString(),
       pickupDeadline: data.pickupDeadline,
       status: 'Pending',

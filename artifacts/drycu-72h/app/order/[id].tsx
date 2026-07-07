@@ -501,6 +501,28 @@ Thank you for choosing DRYCU-72H! ${STORE_INFO.website}`;
                 <Text style={[styles.pickupTime, { color: colors.primary }]}>
                   {pickup.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                 </Text>
+
+                {/* Order type badge */}
+                <View style={[
+                  styles.orderTypeBadge,
+                  {
+                    backgroundColor: order.pickupMode === 'home' ? colors.accent + '18' : colors.secondary,
+                    borderColor:     order.pickupMode === 'home' ? colors.accent         : colors.border,
+                  },
+                ]}>
+                  <Ionicons
+                    name={order.pickupMode === 'home' ? 'home-outline' : 'storefront-outline'}
+                    size={14}
+                    color={order.pickupMode === 'home' ? colors.accent : colors.mutedForeground}
+                  />
+                  <Text style={[
+                    styles.orderTypeBadgeText,
+                    { color: order.pickupMode === 'home' ? colors.accent : colors.mutedForeground },
+                  ]}>
+                    {order.pickupMode === 'home' ? 'Home Pickup' : 'Store Visit'}
+                  </Text>
+                </View>
+
                 {order.bookedBy && (
                   <Text style={[styles.bookedBy, { color: colors.mutedForeground }]}>Booked by: {order.bookedBy}</Text>
                 )}
@@ -582,6 +604,8 @@ const styles = StyleSheet.create({
   finTotalVal: { fontSize: 22, fontFamily: 'Inter_700Bold' },
   pickupDate: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
   pickupTime: { fontSize: 22, fontFamily: 'Inter_700Bold', marginTop: 4 },
+  orderTypeBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1, alignSelf: 'flex-start' },
+  orderTypeBadgeText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   bookedBy: { fontSize: 13, fontFamily: 'Inter_400Regular', marginTop: 6 },
   note: { fontSize: 14, fontFamily: 'Inter_400Regular', marginTop: 8 },
   shareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, marginTop: 4 },

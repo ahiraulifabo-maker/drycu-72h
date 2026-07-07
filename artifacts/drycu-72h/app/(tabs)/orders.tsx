@@ -13,6 +13,7 @@ import {
 
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { useLayout } from '@/hooks/useLayout';
 import { Order, OrderStatus } from '@/types';
 
 const STATUS_FILTERS: (OrderStatus | 'All')[] = ['All', 'Pending', 'Ready', 'Delivered'];
@@ -32,7 +33,7 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   );
 }
 
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({ order, isWide }: { order: Order; isWide: boolean }) {
   const colors = useColors();
   const { getCustomer } = useApp();
   const customer = getCustomer(order.customerId);
@@ -46,6 +47,7 @@ function OrderCard({ order }: { order: Order }) {
       style={[
         styles.card,
         { backgroundColor: colors.card, borderColor: isOverdue ? colors.destructive : colors.border },
+        isWide && styles.cardWide,
       ]}
     >
       <View style={styles.cardHeader}>
@@ -55,9 +57,7 @@ function OrderCard({ order }: { order: Order }) {
       <Text style={[styles.customerName, { color: colors.foreground }]}>
         {customer?.name ?? 'Unknown Customer'}
       </Text>
-      <Text style={[styles.mobile, { color: colors.mutedForeground }]}>
-        {customer?.mobile}
-      </Text>
+      <Text style={[styles.mobile, { color: colors.mutedForeground }]}>{customer?.mobile}</Text>
       <View style={styles.cardFooter}>
         <View style={styles.footerRow}>
           <Ionicons name="time-outline" size={13} color={isOverdue ? colors.destructive : colors.mutedForeground} />
@@ -66,12 +66,13 @@ function OrderCard({ order }: { order: Order }) {
             {pickupDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </View>
-        <Text style={[styles.amount, { color: colors.foreground }]}>
-          ₹{order.netPayable.toFixed(2)}
-        </Text>
+        <Text style={[styles.amount, { color: colors.foreground }]}>₹{order.netPayable.toFixed(2)}</Text>
       </View>
       <Text style={[styles.itemCount, { color: colors.mutedForeground }]}>
         {order.items.length} item{order.items.length !== 1 ? 's' : ''}
+        {(order as any).pickupMode === 'home' && (
+          <Text style={{ color: colors.accent }}> · 🏠 Home</Text>
+        )}
       </Text>
     </TouchableOpacity>
   );
@@ -81,12 +82,14 @@ export default function OrdersScreen() {
   const colors = useColors();
   const { orders } = useApp();
   const [filter, setFilter] = useState<OrderStatus | 'All'>('All');
+  const { isWide } = useLayout();
 
   const filtered = [...orders]
     .filter(o => filter === 'All' || o.status === filter)
     .sort((a, b) => b.diNumber - a.diNumber);
 
-  const webTop = Platform.OS === 'web' ? 67 : 0;
+  const webTop = !isWide && Platform.OS === 'web' ? 67 : 0;
+  const numColumns = isWide ? 2 : 1;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: webTop }]}>
@@ -100,19 +103,21 @@ export default function OrdersScreen() {
               filter === f && { backgroundColor: colors.primary, borderRadius: 20 },
             ]}
           >
-            <Text style={[
-              styles.filterText,
-              { color: filter === f ? '#fff' : colors.mutedForeground },
-            ]}>{f}</Text>
+            <Text style={[styles.filterText, { color: filter === f ? '#fff' : colors.mutedForeground }]}>
+              {f}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
 
       <FlatList
+        key={isWide ? 'wide' : 'narrow'}
         data={filtered}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <OrderCard order={item} />}
-        contentContainerStyle={styles.list}
+        numColumns={numColumns}
+        renderItem={({ item }) => <OrderCard order={item} isWide={isWide} />}
+        contentContainerStyle={[styles.list, isWide && styles.listWide]}
+        columnWrapperStyle={isWide ? styles.columnWrapper : undefined}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="receipt-outline" size={48} color={colors.mutedForeground} />
@@ -140,16 +145,12 @@ export default function OrdersScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  filterRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
-    borderBottomWidth: 1,
-  },
+  filterRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 8, borderBottomWidth: 1 },
   filterBtn: { paddingHorizontal: 14, paddingVertical: 6 },
   filterText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   list: { padding: 16, paddingBottom: 100 },
+  listWide: { paddingHorizontal: 20 },
+  columnWrapper: { gap: 12 },
   card: {
     borderRadius: 12,
     borderWidth: 1,
@@ -157,16 +158,10 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 4,
   },
+  cardWide: { flex: 1, marginBottom: 12 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   diNumber: { fontSize: 15, fontFamily: 'Inter_700Bold' },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 20,
-    gap: 4,
-  },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, gap: 4 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   customerName: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginTop: 4 },
@@ -180,18 +175,10 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 18, fontFamily: 'Inter_600SemiBold' },
   emptyText: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center' },
   fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    position: 'absolute', bottom: 24, right: 24,
+    width: 56, height: 56, borderRadius: 28,
+    alignItems: 'center', justifyContent: 'center',
+    elevation: 6, shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6,
   },
 });

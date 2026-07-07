@@ -15,6 +15,7 @@ import {
 
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { useLayout } from '@/hooks/useLayout';
 import { Customer, Order } from '@/types';
 
 function StatCard({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
@@ -81,23 +82,24 @@ export default function DashboardScreen() {
   const colors = useColors();
   const { customers, orders, searchCustomers } = useApp();
   const [query, setQuery] = useState('');
+  const { isWide } = useLayout();
 
   const searchResults = query.trim().length >= 2 ? searchCustomers(query) : [];
   const recentOrders = [...orders].sort((a, b) => b.diNumber - a.diNumber).slice(0, 10);
 
   const pending = orders.filter(o => o.status === 'Pending').length;
-  const ready = orders.filter(o => o.status === 'Ready').length;
+  const ready   = orders.filter(o => o.status === 'Ready').length;
   const todayRevenue = orders
     .filter(o => {
-      const d = new Date(o.createdAt);
-      const now = new Date();
+      const d = new Date(o.createdAt), now = new Date();
       return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     })
     .reduce((s, o) => s + o.netPayable, 0);
 
-  const webTop = Platform.OS === 'web' ? 67 : 0;
+  // On web with tab bar (narrow) there's 67px offset; wide screen has sidebar, no offset needed
+  const webTop = !isWide && Platform.OS === 'web' ? 67 : 0;
 
-  return (
+  const content = (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={[styles.scroll, { paddingTop: webTop + 16 }]}
@@ -109,13 +111,15 @@ export default function DashboardScreen() {
           <Text style={[styles.storeName, { color: colors.primary }]}>DRYCU-72H</Text>
           <Text style={[styles.storeTagline, { color: colors.mutedForeground }]}>Laundry & Dry Cleaning POS</Text>
         </View>
-        <TouchableOpacity
-          style={[styles.newOrderBtn, { backgroundColor: colors.primary }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/order/new'); }}
-        >
-          <Ionicons name="add" size={20} color="#fff" />
-          <Text style={styles.newOrderBtnText}>New Order</Text>
-        </TouchableOpacity>
+        {!isWide && (
+          <TouchableOpacity
+            style={[styles.newOrderBtn, { backgroundColor: colors.primary }]}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/order/new'); }}
+          >
+            <Ionicons name="add" size={20} color="#fff" />
+            <Text style={styles.newOrderBtnText}>New Order</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Search */}
@@ -153,12 +157,12 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Stats */}
-      <View style={styles.statsGrid}>
-        <StatCard icon="people-outline" label="Customers" value={customers.length.toString()} color={colors.primary} />
-        <StatCard icon="receipt-outline" label="Total Orders" value={orders.length.toString()} color={colors.accent} />
-        <StatCard icon="time-outline" label="Pending" value={pending.toString()} color={colors.warning} />
-        <StatCard icon="checkmark-circle-outline" label="Ready" value={ready.toString()} color={colors.accent} />
+      {/* Stats — 4 across on wide, 2×2 on narrow */}
+      <View style={[styles.statsGrid, isWide && styles.statsGridWide]}>
+        <StatCard icon="people-outline"          label="Customers"    value={customers.length.toString()} color={colors.primary} />
+        <StatCard icon="receipt-outline"         label="Total Orders" value={orders.length.toString()}    color={colors.accent} />
+        <StatCard icon="time-outline"            label="Pending"      value={pending.toString()}          color={colors.warning} />
+        <StatCard icon="checkmark-circle-outline" label="Ready"       value={ready.toString()}            color={colors.accent} />
       </View>
 
       <View style={[styles.revenueCard, { backgroundColor: colors.primary }]}>
@@ -167,6 +171,15 @@ export default function DashboardScreen() {
           <Text style={styles.revenueLabel}>Today's Revenue</Text>
           <Text style={styles.revenueValue}>₹{todayRevenue.toFixed(2)}</Text>
         </View>
+        {isWide && (
+          <TouchableOpacity
+            style={styles.wideNewOrderBtn}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/order/new'); }}
+          >
+            <Ionicons name="add-circle-outline" size={20} color="#fff" />
+            <Text style={styles.wideNewOrderText}>New Order</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Quick Actions */}
@@ -218,6 +231,8 @@ export default function DashboardScreen() {
       )}
     </ScrollView>
   );
+
+  return content;
 }
 
 const styles = StyleSheet.create({
@@ -228,6 +243,8 @@ const styles = StyleSheet.create({
   storeTagline: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
   newOrderBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
   newOrderBtnText: { color: '#fff', fontSize: 14, fontFamily: 'Inter_700Bold' },
+  wideNewOrderBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.18)' },
+  wideNewOrderText: { color: '#fff', fontSize: 13, fontFamily: 'Inter_700Bold' },
   searchBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12, borderWidth: 1, gap: 8 },
   searchInput: { flex: 1, fontSize: 15, fontFamily: 'Inter_400Regular' },
   resultsBox: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
@@ -240,6 +257,7 @@ const styles = StyleSheet.create({
   noResultsText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
   addCustomerBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  statsGridWide: { flexWrap: 'nowrap' },
   statCard: { flex: 1, minWidth: '45%', borderRadius: 12, borderWidth: 1, padding: 14, gap: 6 },
   statIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   statValue: { fontSize: 22, fontFamily: 'Inter_700Bold', marginTop: 4 },
