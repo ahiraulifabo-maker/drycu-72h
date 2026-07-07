@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "DRYCU-72H",
+    "platforms": ["android", "ios", "web"],
+    "slug": "drycu-72h",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/images/icon.png",
+    "scheme": "drycu-72h",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0052CC"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.drycu72h.app"
+    },
+    "android": {
+      "package": "com.drycu72h.app"
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png",
+      "name": "DRYCU-72H",
+      "shortName": "DRYCU",
+      "display": "standalone",
+      "themeColor": "#0052CC",
+      "backgroundColor": "#F4F6FB",
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
