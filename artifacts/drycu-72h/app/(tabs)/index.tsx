@@ -112,13 +112,21 @@ export default function DashboardScreen() {
           <Text style={[styles.storeTagline, { color: colors.mutedForeground }]}>Laundry & Dry Cleaning POS</Text>
         </View>
         {!isWide && (
-          <TouchableOpacity
-            style={[styles.newOrderBtn, { backgroundColor: colors.primary }]}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/order/new'); }}
-          >
-            <Ionicons name="add" size={20} color="#fff" />
-            <Text style={styles.newOrderBtnText}>New Order</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={[styles.iconHeaderBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push('/settings/admin')}
+            >
+              <Ionicons name="settings-outline" size={20} color={colors.mutedForeground} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.newOrderBtn, { backgroundColor: colors.primary }]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/order/new'); }}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+              <Text style={styles.newOrderBtnText}>New Order</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -241,6 +249,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   storeName: { fontSize: 22, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
   storeTagline: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  iconHeaderBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   newOrderBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
   newOrderBtnText: { color: '#fff', fontSize: 14, fontFamily: 'Inter_700Bold' },
   wideNewOrderBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.18)' },

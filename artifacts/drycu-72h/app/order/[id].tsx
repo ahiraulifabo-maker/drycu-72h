@@ -14,7 +14,6 @@ import {
 
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { STORE_INFO } from '@/constants/storeInfo';
 import { printTags, printBill } from '@/utils/print';
 import { Order, OrderStatus } from '@/types';
 
@@ -98,11 +97,12 @@ function TagLayout({ order, customerName }: { order: Order; customerName: string
   );
 }
 
-function BillLayout({ order, customerName, customerMobile, customerAddress }: {
+function BillLayout({ order, customerName, customerMobile, customerAddress, storeInfo }: {
   order: Order;
   customerName: string;
   customerMobile: string;
   customerAddress: string;
+  storeInfo: { name: string; line1: string; line2: string; contact: string; tagline: string; placeOfSupply: string; timing: string; website: string };
 }) {
   const pickup = new Date(order.pickupDeadline);
   const created = new Date(order.createdAt);
@@ -117,11 +117,11 @@ function BillLayout({ order, customerName, customerMobile, customerAddress }: {
         <View style={styles.billLogoBox}>
           <Text style={styles.billLogoX}>✕</Text>
         </View>
-        <Text style={styles.billStoreName}>{STORE_INFO.name}</Text>
-        <Text style={styles.billAddress}>{STORE_INFO.line1}</Text>
-        <Text style={styles.billAddress}>{STORE_INFO.line2}</Text>
-        <Text style={styles.billContact}>Contact: {STORE_INFO.contact}</Text>
-        <Text style={styles.billTagline}>{STORE_INFO.tagline}</Text>
+        <Text style={styles.billStoreName}>{storeInfo.name}</Text>
+        <Text style={styles.billAddress}>{storeInfo.line1}</Text>
+        <Text style={styles.billAddress}>{storeInfo.line2}</Text>
+        <Text style={styles.billContact}>Contact: {storeInfo.contact}</Text>
+        <Text style={styles.billTagline}>{storeInfo.tagline}</Text>
 
         <View style={styles.billDivider} />
 
@@ -131,7 +131,7 @@ function BillLayout({ order, customerName, customerMobile, customerAddress }: {
         <Text style={styles.billCustDetail}>
           {customerAddress}{customerMobile ? `(${customerMobile})` : ''}
         </Text>
-        <Text style={styles.billCustDetail}>Place of Supply- {STORE_INFO.placeOfSupply}</Text>
+        <Text style={styles.billCustDetail}>Place of Supply- {storeInfo.placeOfSupply}</Text>
         <Text style={styles.billDateTime}>
           {created.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}{' '}
           {created.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -212,7 +212,7 @@ function BillLayout({ order, customerName, customerMobile, customerAddress }: {
         </Text>
         {order.bookedBy && <Text style={styles.billBookedBy}>Booked By : {order.bookedBy}</Text>}
         <Text style={styles.billAdvLine}>Advance balance: {advance.toFixed(0)}</Text>
-        <Text style={styles.billTiming}>Store Timing {STORE_INFO.timing}</Text>
+        <Text style={styles.billTiming}>Store Timing {storeInfo.timing}</Text>
 
         {order.note ? (
           <>
@@ -252,7 +252,7 @@ function BillLayout({ order, customerName, customerMobile, customerAddress }: {
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
-  const { getOrder, getCustomer, updateOrderStatus, deleteOrder } = useApp();
+  const { getOrder, getCustomer, updateOrderStatus, deleteOrder, storeInfo } = useApp();
   const order = getOrder(id);
   const [activeTab, setActiveTab] = useState<'details' | 'tag' | 'bill'>('details');
 
@@ -276,6 +276,7 @@ export default function OrderDetailScreen() {
     Delivered: colors.mutedForeground,
   };
 
+  // ─ buildWhatsAppMessage uses live storeInfo from context ─
   const buildWhatsAppMessage = () => {
     const itemLines = order.items.map((item, i) =>
       `${i + 1}. ${item.itemName} (${item.serviceType})${item.kg > 0 ? ` ${item.kg}kg` : ''}${item.qty > 0 ? ` ×${item.qty}pc` : ''} = ₹${item.subtotal.toFixed(2)}`
@@ -301,7 +302,7 @@ ${itemLines}${topUpLines ? `\n\n*Top-Up Services:*\n${topUpLines}` : ''}
 
 *Ready by:* ${pickup.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} at ${pickup.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
 
-Thank you for choosing DRYCU-72H! ${STORE_INFO.website}`;
+Thank you for choosing DRYCU-72H! ${storeInfo.website}`;
   };
 
   const sendWhatsApp = () => {
@@ -492,6 +493,15 @@ Thank you for choosing DRYCU-72H! ${STORE_INFO.website}`;
                 </View>
               </View>
 
+              {/* Delete Order */}
+              <TouchableOpacity
+                style={[styles.deleteOrderBtn, { borderColor: colors.destructive }]}
+                onPress={handleDelete}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.destructive} />
+                <Text style={[styles.deleteOrderBtnText, { color: colors.destructive }]}>Delete This Order</Text>
+              </TouchableOpacity>
+
               {/* Pickup */}
               <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.sectionTitle, { color: colors.primary }]}>Pickup Deadline</Text>
@@ -548,6 +558,7 @@ Thank you for choosing DRYCU-72H! ${STORE_INFO.website}`;
                 customerName={customer?.name ?? 'N/A'}
                 customerMobile={customer?.mobile ?? ''}
                 customerAddress={customer?.address ?? ''}
+                storeInfo={storeInfo}
               />
               <TouchableOpacity style={[styles.shareBtn, { backgroundColor: '#25D366' }]} onPress={sendWhatsApp}>
                 <Ionicons name="logo-whatsapp" size={18} color="#fff" />
@@ -608,6 +619,8 @@ const styles = StyleSheet.create({
   orderTypeBadgeText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   bookedBy: { fontSize: 13, fontFamily: 'Inter_400Regular', marginTop: 6 },
   note: { fontSize: 14, fontFamily: 'Inter_400Regular', marginTop: 8 },
+  deleteOrderBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, borderWidth: 1.5 },
+  deleteOrderBtnText: { fontSize: 15, fontFamily: 'Inter_700Bold' },
   shareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, marginTop: 4 },
   shareBtnText: { color: '#fff', fontSize: 15, fontFamily: 'Inter_700Bold' },
 

@@ -58,6 +58,10 @@ function RootLayoutNav() {
         name="settings/rates"
         options={{ title: "Rate Chart" }}
       />
+      <Stack.Screen
+        name="settings/admin"
+        options={{ title: "Admin · God Edit" }}
+      />
     </Stack>
   );
 }

@@ -71,6 +71,15 @@ function SidebarNav({ colors }: { colors: ReturnType<typeof useColors> }) {
         })}
       </View>
 
+      {/* Settings link */}
+      <TouchableOpacity
+        style={[ss.settingsLink, { borderColor: colors.border }]}
+        onPress={() => router.push("/settings/admin")}
+      >
+        <Ionicons name="settings-outline" size={16} color={colors.mutedForeground} />
+        <Text style={[ss.settingsLinkText, { color: colors.mutedForeground }]}>Admin / God Edit</Text>
+      </TouchableOpacity>
+
       {/* Quick action */}
       <TouchableOpacity onPress={() => router.push("/order/new")}>
         <View style={[ss.newOrderBtn, { backgroundColor: colors.primary }]}>
@@ -216,6 +225,17 @@ const ss = StyleSheet.create({
     paddingVertical: 11,
   },
   navLabel: { fontSize: 14 },
+  settingsLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  settingsLinkText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   newOrderBtn: {
     flexDirection: "row",
     alignItems: "center",

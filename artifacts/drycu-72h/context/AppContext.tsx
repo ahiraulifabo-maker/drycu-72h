@@ -3,33 +3,48 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 
 import { DEFAULT_TOPUP_SERVICES, TOPUP_STORAGE_KEY } from '@/constants/topup';
 import { GarmentRate } from '@/constants/rates';
+import { STORE_INFO as DEFAULT_STORE_INFO } from '@/constants/storeInfo';
 import { Customer, DiscountType, Order, OrderItem, OrderStatus, OrderTopUp, PickupMode, ServiceType } from '@/types';
 
 const STORAGE_KEYS = {
-  CUSTOMERS: 'drycu_customers',
-  ORDERS: 'drycu_orders',
-  NEXT_DI: 'drycu_next_di',
-  GARMENT_RATES: 'drycu_garment_rates',
+  CUSTOMERS:    'drycu_customers',
+  ORDERS:       'drycu_orders',
+  NEXT_DI:      'drycu_next_di',
+  GARMENT_RATES:'drycu_garment_rates',
+  STORE_INFO:   'drycu_store_info',
 };
 
+export interface StoreInfoData {
+  name: string;
+  line1: string;
+  line2: string;
+  contact: string;
+  tagline: string;
+  placeOfSupply: string;
+  timing: string;
+  website: string;
+}
+
 interface AppContextType {
-  customers: Customer[];
-  orders: Order[];
-  nextDI: number;
-  isLoaded: boolean;
-  topUpRates: Record<string, number>;
+  customers:            Customer[];
+  orders:               Order[];
+  nextDI:               number;
+  isLoaded:             boolean;
+  topUpRates:           Record<string, number>;
   garmentRateOverrides: Record<string, Partial<GarmentRate>>;
+  storeInfo:            StoreInfoData;
 
-  addCustomer: (data: Omit<Customer, 'id' | 'createdAt'>) => Promise<Customer | null>;
-  updateCustomer: (id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>) => Promise<void>;
-  deleteCustomer: (id: string) => Promise<void>;
-  findDuplicate: (name: string, mobile: string, excludeId?: string) => Customer | null;
-  searchCustomers: (query: string) => Customer[];
-  getCustomer: (id: string) => Customer | undefined;
+  addCustomer:         (data: Omit<Customer, 'id' | 'createdAt'>) => Promise<Customer | null>;
+  updateCustomer:      (id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>) => Promise<void>;
+  deleteCustomer:      (id: string) => Promise<void>;
+  findDuplicate:       (name: string, mobile: string, excludeId?: string) => Customer | null;
+  searchCustomers:     (query: string) => Customer[];
+  getCustomer:         (id: string) => Customer | undefined;
 
-  updateTopUpRate: (name: string, rate: number) => Promise<void>;
-  updateGarmentRate: (itemName: string, service: ServiceType, rate: number) => Promise<void>;
-  resetGarmentRate: (itemName: string, service: ServiceType) => Promise<void>;
+  updateTopUpRate:     (name: string, rate: number) => Promise<void>;
+  updateGarmentRate:   (itemName: string, service: ServiceType, rate: number) => Promise<void>;
+  resetGarmentRate:    (itemName: string, service: ServiceType) => Promise<void>;
+  updateStoreInfo:     (data: Partial<StoreInfoData>) => Promise<void>;
 
   addOrder: (data: {
     customerId: string;
@@ -43,10 +58,14 @@ interface AppContextType {
     note?: string;
     pickupMode?: PickupMode;
   }) => Promise<Order>;
+  updateOrder:       (id: string, changes: Partial<Pick<Order, 'status' | 'pickupDeadline' | 'pickupMode' | 'advancePaid' | 'bookedBy' | 'note' | 'discountType' | 'discountValue'>>) => Promise<void>;
   updateOrderStatus: (id: string, status: OrderStatus) => Promise<void>;
-  deleteOrder: (id: string) => Promise<void>;
+  deleteOrder:       (id: string) => Promise<void>;
+  deleteAllOrders:   () => Promise<void>;
+  deleteAllCustomers:() => Promise<void>;
+  factoryReset:      () => Promise<void>;
   getOrdersForCustomer: (customerId: string) => Order[];
-  getOrder: (id: string) => Order | undefined;
+  getOrder:          (id: string) => Order | undefined;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -69,7 +88,7 @@ function computeFinancials(
   const topUpTotal = topUps.reduce((s, t) => s + t.subtotal, 0);
   const gross = itemsTotal + topUpTotal;
   let discountAmount = 0;
-  if (discountType === 'flat') discountAmount = Math.min(discountValue, gross);
+  if (discountType === 'flat')       discountAmount = Math.min(discountValue, gross);
   if (discountType === 'percentage') discountAmount = (gross * discountValue) / 100;
   const net = gross - discountAmount;
   return { grossAmount: gross, discountAmount, cgstAmount: 0, sgstAmount: 0, netPayable: net };
@@ -82,29 +101,32 @@ function buildDefaultTopUpRates(): Record<string, number> {
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [nextDI, setNextDI] = useState(1);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [topUpRates, setTopUpRates] = useState<Record<string, number>>(buildDefaultTopUpRates());
+  const [customers,            setCustomers]            = useState<Customer[]>([]);
+  const [orders,               setOrders]               = useState<Order[]>([]);
+  const [nextDI,               setNextDI]               = useState(1);
+  const [isLoaded,             setIsLoaded]             = useState(false);
+  const [topUpRates,           setTopUpRates]           = useState<Record<string, number>>(buildDefaultTopUpRates());
   const [garmentRateOverrides, setGarmentRateOverrides] = useState<Record<string, Partial<GarmentRate>>>({});
+  const [storeInfo,            setStoreInfo]            = useState<StoreInfoData>({ ...DEFAULT_STORE_INFO });
 
   useEffect(() => {
     (async () => {
       try {
-        const [c, o, d, t, g] = await Promise.all([
+        const [c, o, d, t, g, si] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.CUSTOMERS),
           AsyncStorage.getItem(STORAGE_KEYS.ORDERS),
           AsyncStorage.getItem(STORAGE_KEYS.NEXT_DI),
           AsyncStorage.getItem(TOPUP_STORAGE_KEY),
           AsyncStorage.getItem(STORAGE_KEYS.GARMENT_RATES),
+          AsyncStorage.getItem(STORAGE_KEYS.STORE_INFO),
         ]);
-        if (c) setCustomers(JSON.parse(c));
-        if (o) setOrders(JSON.parse(o));
-        if (d) setNextDI(parseInt(d, 10));
-        if (t) setTopUpRates({ ...buildDefaultTopUpRates(), ...JSON.parse(t) });
-        if (g) setGarmentRateOverrides(JSON.parse(g));
-      } catch (e) {
+        if (c)  setCustomers(JSON.parse(c));
+        if (o)  setOrders(JSON.parse(o));
+        if (d)  setNextDI(parseInt(d, 10));
+        if (t)  setTopUpRates({ ...buildDefaultTopUpRates(), ...JSON.parse(t) });
+        if (g)  setGarmentRateOverrides(JSON.parse(g));
+        if (si) setStoreInfo({ ...DEFAULT_STORE_INFO, ...JSON.parse(si) });
+      } catch (_) {
         // ignore
       } finally {
         setIsLoaded(true);
@@ -139,6 +161,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (Object.keys(item).length === 0) delete updated[itemName];
     setGarmentRateOverrides(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.GARMENT_RATES, JSON.stringify(updated));
+  };
+
+  const updateStoreInfo = async (data: Partial<StoreInfoData>) => {
+    const updated = { ...storeInfo, ...data };
+    setStoreInfo(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.STORE_INFO, JSON.stringify(updated));
   };
 
   const findDuplicate = useCallback((name: string, mobile: string, excludeId?: string): Customer | null => {
@@ -233,6 +261,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return order;
   };
 
+  const updateOrder = async (
+    id: string,
+    changes: Partial<Pick<Order, 'status' | 'pickupDeadline' | 'pickupMode' | 'advancePaid' | 'bookedBy' | 'note' | 'discountType' | 'discountValue'>>
+  ) => {
+    const updated = orders.map(o => {
+      if (o.id !== id) return o;
+      const merged = { ...o, ...changes };
+      // Recompute financials if discount settings changed
+      if (changes.discountType !== undefined || changes.discountValue !== undefined) {
+        const { grossAmount, discountAmount, cgstAmount, sgstAmount, netPayable } =
+          computeFinancials(o.items, o.topUps ?? [], merged.discountType, merged.discountValue);
+        return { ...merged, grossAmount, discountAmount, cgstAmount, sgstAmount, netPayable };
+      }
+      return merged;
+    });
+    setOrders(updated);
+    await saveOrders(updated);
+  };
+
   const updateOrderStatus = async (id: string, status: OrderStatus) => {
     const updated = orders.map(o => o.id === id ? { ...o, status } : o);
     setOrders(updated);
@@ -245,6 +292,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await saveOrders(updated);
   };
 
+  const deleteAllOrders = async () => {
+    setOrders([]);
+    setNextDI(1);
+    await Promise.all([
+      saveOrders([]),
+      AsyncStorage.setItem(STORAGE_KEYS.NEXT_DI, '1'),
+    ]);
+  };
+
+  const deleteAllCustomers = async () => {
+    setCustomers([]);
+    await saveCustomers([]);
+  };
+
+  const factoryReset = async () => {
+    setCustomers([]);
+    setOrders([]);
+    setNextDI(1);
+    setTopUpRates(buildDefaultTopUpRates());
+    setGarmentRateOverrides({});
+    setStoreInfo({ ...DEFAULT_STORE_INFO });
+    await AsyncStorage.multiRemove([
+      STORAGE_KEYS.CUSTOMERS,
+      STORAGE_KEYS.ORDERS,
+      STORAGE_KEYS.NEXT_DI,
+      STORAGE_KEYS.GARMENT_RATES,
+      STORAGE_KEYS.STORE_INFO,
+      TOPUP_STORAGE_KEY,
+    ]);
+  };
+
   const getOrdersForCustomer = useCallback((customerId: string) =>
     orders.filter(o => o.customerId === customerId).sort((a, b) => b.diNumber - a.diNumber),
     [orders]);
@@ -253,10 +331,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      customers, orders, nextDI, isLoaded, topUpRates, garmentRateOverrides,
+      customers, orders, nextDI, isLoaded, topUpRates, garmentRateOverrides, storeInfo,
       addCustomer, updateCustomer, deleteCustomer, findDuplicate, searchCustomers, getCustomer,
-      updateTopUpRate, updateGarmentRate, resetGarmentRate,
-      addOrder, updateOrderStatus, deleteOrder, getOrdersForCustomer, getOrder,
+      updateTopUpRate, updateGarmentRate, resetGarmentRate, updateStoreInfo,
+      addOrder, updateOrder, updateOrderStatus, deleteOrder,
+      deleteAllOrders, deleteAllCustomers, factoryReset,
+      getOrdersForCustomer, getOrder,
     }}>
       {children}
     </AppContext.Provider>
