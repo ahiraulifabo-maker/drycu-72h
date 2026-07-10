@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { Order, Customer } from '@/types';
-import { STORE_INFO } from '@/constants/storeInfo';
+import { StoreInfoData } from '@/context/AppContext';
 
 const SERVICE_ABBR: Record<string, string> = {
   'Laundry': 'LAU',
@@ -30,7 +30,7 @@ function openPrintWindow(html: string) {
 // Each tag: DI Number  |  Garment Name  |  Service
 // ──────────────────────────────────────────────────────────────────────────
 
-export function printTags(order: Order) {
+export function printTags(order: Order, storeInfo: StoreInfoData) {
   if (Platform.OS !== 'web') return;
 
   const tagBlocks = order.items.map((item) => {
@@ -42,14 +42,14 @@ export function printTags(order: Order) {
 
     return `
       <div class="tag">
-        <div class="store">${STORE_INFO.name}</div>
+        <div class="store">${storeInfo.name}</div>
         <div class="di">${order.id}</div>
         <div class="divider"></div>
         <div class="garment">${item.itemName}</div>
         <div class="service">${service}</div>
         ${detail ? `<div class="detail">${detail}</div>` : ''}
         <div class="divider"></div>
-        <div class="footer">${STORE_INFO.timing}</div>
+        <div class="footer">${storeInfo.timing}</div>
       </div>
     `;
   }).join('');
@@ -144,7 +144,7 @@ export function printTags(order: Order) {
 
 // ── BILL PRINT (80mm thermal printer) ──────────────────────────────────────
 
-export function printBill(order: Order, customer: Customer | undefined) {
+export function printBill(order: Order, customer: Customer | undefined, storeInfo: StoreInfoData) {
   if (Platform.OS !== 'web') return;
 
   const pickup = new Date(order.pickupDeadline);
@@ -189,7 +189,7 @@ export function printBill(order: Order, customer: Customer | undefined) {
   const TERMS = [
     `#1. DRYCU-72H is not liable for color fastness, threads-out, missing buttons, or any other damages.`,
     `#2. Report damages, missing items, or exchanged clothes to DRYCU-72H within 24 hours of delivery.`,
-    `#3. Refer to our website (${STORE_INFO.website}) for complete Terms and Conditions.`,
+    `#3. Refer to our website (${storeInfo.website}) for complete Terms and Conditions.`,
     `#4. We aim for on-time delivery, but if delays occur due to unforeseen circumstances, we'll keep you updated.`,
     `#5. We accept no liability for any loss or damage arising due to washing, fire, burglary etc.`,
   ].map(t => `<p class="term">${t}</p>`).join('');
@@ -281,11 +281,11 @@ export function printBill(order: Order, customer: Customer | undefined) {
   <!-- Header -->
   <div class="header">
     <div class="logo-box">✕</div><br/>
-    <div class="store-name">${STORE_INFO.name}</div>
-    <div class="store-addr">${STORE_INFO.line1}</div>
-    <div class="store-addr">${STORE_INFO.line2}</div>
-    <div class="store-addr">Contact: ${STORE_INFO.contact}</div>
-    <div class="store-tagline">${STORE_INFO.tagline}</div>
+    <div class="store-name">${storeInfo.name}</div>
+    <div class="store-addr">${storeInfo.line1}</div>
+    <div class="store-addr">${storeInfo.line2}</div>
+    <div class="store-addr">Contact: ${storeInfo.contact}</div>
+    <div class="store-tagline">${storeInfo.tagline}</div>
   </div>
 
   <div class="div"></div>
@@ -294,7 +294,7 @@ export function printBill(order: Order, customer: Customer | undefined) {
   <div class="di">${order.id}</div>
   <div class="cust-name">${customer?.name ?? 'N/A'}</div>
   ${customer?.mobile ? `<div class="cust-detail">${customer.address ?? customer.mobile}(${customer.mobile})</div>` : ''}
-  <div class="cust-detail">Place of Supply- ${STORE_INFO.placeOfSupply}</div>
+  <div class="cust-detail">Place of Supply- ${storeInfo.placeOfSupply}</div>
   <div class="cust-detail">${created.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} ${created.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
 
   <div class="div"></div>
@@ -348,7 +348,7 @@ export function printBill(order: Order, customer: Customer | undefined) {
   } ${pickup.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
   ${order.bookedBy ? `<div class="info-line"><span class="info-label">Booked By :</span> ${order.bookedBy}</div>` : ''}
   <div class="info-line">Advance balance: ${advance.toFixed(0)}</div>
-  <div class="info-line">Store Timing ${STORE_INFO.timing}</div>
+  <div class="info-line">Store Timing ${storeInfo.timing}</div>
 
   <div class="div-dashed"></div>
   <div class="div-dashed"></div>

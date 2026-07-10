@@ -20,7 +20,7 @@ import { DEFAULT_TOPUP_SERVICES } from '@/constants/topup';
 
 export default function TopUpSettingsScreen() {
   const colors = useColors();
-  const { topUpRates, updateTopUpRate } = useApp();
+  const { topUpRates, updateTopUpRates } = useApp();
   const [localRates, setLocalRates] = useState<Record<string, string>>(
     Object.fromEntries(DEFAULT_TOPUP_SERVICES.map(s => [s.name, (topUpRates[s.name] ?? s.defaultRate).toString()]))
   );
@@ -29,12 +29,10 @@ export default function TopUpSettingsScreen() {
   const handleSaveAll = async () => {
     setSaving(true);
     try {
-      await Promise.all(
-        DEFAULT_TOPUP_SERVICES.map(s => {
-          const val = parseFloat(localRates[s.name]) || 0;
-          return updateTopUpRate(s.name, val);
-        })
+      const rates = Object.fromEntries(
+        DEFAULT_TOPUP_SERVICES.map(s => [s.name, parseFloat(localRates[s.name]) || 0])
       );
+      await updateTopUpRates(rates);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Saved', 'Top-Up Service rates have been updated.');
     } catch (e) {

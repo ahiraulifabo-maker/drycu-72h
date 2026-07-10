@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -314,18 +314,32 @@ Thank you for choosing DRYCU-72H! ${storeInfo.website}`;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const handleStatusChange = (s: OrderStatus) => {
-    Alert.alert('Update Status', `Mark this order as "${s}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Update', onPress: async () => { await updateOrderStatus(id, s); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } },
-    ]);
+  // Alert.alert's button callbacks never fire on web — window.confirm is the
+  // cross-platform-safe way to get a yes/no confirmation before a mutation.
+  const confirmAction = (title: string, message: string): Promise<boolean> => {
+    if (Platform.OS === 'web') {
+      return Promise.resolve(window.confirm(`${title}\n\n${message}`));
+    }
+    return new Promise(resolve => {
+      Alert.alert(title, message, [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Confirm', style: 'destructive', onPress: () => resolve(true) },
+      ]);
+    });
   };
 
-  const handleDelete = () => {
-    Alert.alert('Delete Order', `Delete order ${order.id}? This cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await deleteOrder(id); router.back(); } },
-    ]);
+  const handleStatusChange = async (s: OrderStatus) => {
+    const ok = await confirmAction('Update Status', `Mark this order as "${s}"?`);
+    if (!ok) return;
+    await updateOrderStatus(id, s);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleDelete = async () => {
+    const ok = await confirmAction('Delete Order', `Delete order ${order.id}? This cannot be undone.`);
+    if (!ok) return;
+    await deleteOrder(id);
+    router.back();
   };
 
   return (
@@ -370,7 +384,7 @@ Thank you for choosing DRYCU-72H! ${storeInfo.website}`;
                   style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.primary }]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    printTags(order);
+                    printTags(order, storeInfo);
                   }}
                 >
                   <Ionicons name="pricetag" size={28} color={colors.primary} />
@@ -381,7 +395,7 @@ Thank you for choosing DRYCU-72H! ${storeInfo.website}`;
                   style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.accent }]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    printBill(order, customer);
+                    printBill(order, customer, storeInfo);
                   }}
                 >
                   <Ionicons name="document-text" size={28} color={colors.accent} />

@@ -42,6 +42,7 @@ interface AppContextType {
   getCustomer:         (id: string) => Customer | undefined;
 
   updateTopUpRate:     (name: string, rate: number) => Promise<void>;
+  updateTopUpRates:    (rates: Record<string, number>) => Promise<void>;
   updateGarmentRate:   (itemName: string, service: ServiceType, rate: number) => Promise<void>;
   resetGarmentRate:    (itemName: string, service: ServiceType) => Promise<void>;
   updateStoreInfo:     (data: Partial<StoreInfoData>) => Promise<void>;
@@ -141,6 +142,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateTopUpRate = async (name: string, rate: number) => {
     const updated = { ...topUpRates, [name]: rate };
+    setTopUpRates(updated);
+    await AsyncStorage.setItem(TOPUP_STORAGE_KEY, JSON.stringify(updated));
+  };
+
+  // Batch update — avoids the race condition of firing many updateTopUpRate
+  // calls in parallel, where each closes over the same stale `topUpRates`
+  // and only the last write to resolve survives.
+  const updateTopUpRates = async (rates: Record<string, number>) => {
+    const updated = { ...topUpRates, ...rates };
     setTopUpRates(updated);
     await AsyncStorage.setItem(TOPUP_STORAGE_KEY, JSON.stringify(updated));
   };
@@ -333,7 +343,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{
       customers, orders, nextDI, isLoaded, topUpRates, garmentRateOverrides, storeInfo,
       addCustomer, updateCustomer, deleteCustomer, findDuplicate, searchCustomers, getCustomer,
-      updateTopUpRate, updateGarmentRate, resetGarmentRate, updateStoreInfo,
+      updateTopUpRate, updateTopUpRates, updateGarmentRate, resetGarmentRate, updateStoreInfo,
       addOrder, updateOrder, updateOrderStatus, deleteOrder,
       deleteAllOrders, deleteAllCustomers, factoryReset,
       getOrdersForCustomer, getOrder,
