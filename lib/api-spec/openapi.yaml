@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: stores
+    description: Multi-device store data sync for DRYCU-72H
 paths:
   /healthz:
     get:
@@ -24,6 +26,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /stores:
+    post:
+      operationId: createStore
+      tags: [stores]
+      summary: Create a new store
+      description: Creates a new store with a freshly generated shareable code and empty data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStoreRequest"
+      responses:
+        "200":
+          description: Store created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreDataResponse"
+  /stores/{storeId}:
+    get:
+      operationId: getStore
+      tags: [stores]
+      summary: Fetch a store's synced data
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Store data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreDataResponse"
+        "404":
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: pushStore
+      tags: [stores]
+      summary: Push (upsert) a store's full data snapshot
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreDataPayload"
+      responses:
+        "200":
+          description: Store data saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreDataResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +101,63 @@ components:
           type: string
       required:
         - status
+    CreateStoreRequest:
+      type: object
+      properties:
+        storeName:
+          type: string
+      required:
+        - storeName
+    StoreDataPayload:
+      type: object
+      properties:
+        storeName:
+          type: string
+        customers:
+          type: array
+          items: {}
+        orders:
+          type: array
+          items: {}
+        nextDI:
+          type: integer
+        topUpRates:
+          type: object
+          additionalProperties:
+            type: number
+        garmentRateOverrides:
+          type: object
+          additionalProperties:
+            type: object
+        storeInfo:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+        - storeName
+        - customers
+        - orders
+        - nextDI
+        - topUpRates
+        - garmentRateOverrides
+        - storeInfo
+    StoreDataResponse:
+      allOf:
+        - $ref: "#/components/schemas/StoreDataPayload"
+        - type: object
+          properties:
+            storeId:
+              type: string
+            updatedAt:
+              type: string
+          required:
+            - storeId
+            - updatedAt
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
 

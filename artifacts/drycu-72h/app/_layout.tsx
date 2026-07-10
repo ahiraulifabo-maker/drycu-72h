@@ -6,6 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setBaseUrl } from "@workspace/api-client-react";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
@@ -18,6 +19,8 @@ import { AppProvider } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 
 SplashScreen.preventAutoHideAsync();
+
+setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
 
 const queryClient = new QueryClient();
 
@@ -61,6 +64,10 @@ function RootLayoutNav() {
       <Stack.Screen
         name="settings/admin"
         options={{ title: "Admin · God Edit" }}
+      />
+      <Stack.Screen
+        name="settings/store-sync"
+        options={{ title: "Store Sync" }}
       />
     </Stack>
   );

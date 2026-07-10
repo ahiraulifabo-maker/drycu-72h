@@ -341,7 +341,7 @@ export default function AdminScreen() {
     storeInfo, updateStoreInfo,
     orders, updateOrder, deleteOrder, deleteAllOrders,
     customers, updateCustomer, deleteCustomer, deleteAllCustomers,
-    factoryReset, getCustomer,
+    factoryReset, getCustomer, storeId,
   } = useApp();
 
   // Store info local state
@@ -621,6 +621,20 @@ export default function AdminScreen() {
           <Text style={[ss.rateCardArrow, { color: colors.accent }]}>Open →</Text>
         </TouchableOpacity>
       </View>
+
+      {/* ── 4b. Multi-Device Sync ── */}
+      <SectionHeader icon="sync-outline" title="Multi-Device Sync" />
+      <TouchableOpacity
+        style={[ss.rateCard, { backgroundColor: colors.card, borderColor: colors.tint, marginHorizontal: 16, marginTop: -4, marginBottom: 16 }]}
+        onPress={() => router.push('/settings/store-sync')}
+      >
+        <Ionicons name="phone-portrait-outline" size={28} color={colors.tint} />
+        <Text style={[ss.rateCardTitle, { color: colors.foreground }]}>Store Sync</Text>
+        <Text style={[ss.rateCardSub,   { color: colors.mutedForeground }]}>
+          {storeId ? `Paired · ${storeId}` : 'Pair a second phone to this shop\u2019s data'}
+        </Text>
+        <Text style={[ss.rateCardArrow, { color: colors.tint }]}>Open →</Text>
+      </TouchableOpacity>
 
       {/* ── 5. Danger Zone ── */}
       <SectionHeader icon="warning-outline" title="Danger Zone" />

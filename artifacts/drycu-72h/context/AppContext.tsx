@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createStore, getStore, pushStore } from '@workspace/api-client-react';
 
 import { DEFAULT_TOPUP_SERVICES, TOPUP_STORAGE_KEY } from '@/constants/topup';
 import { GarmentRate } from '@/constants/rates';
@@ -12,7 +13,10 @@ const STORAGE_KEYS = {
   NEXT_DI:      'drycu_next_di',
   GARMENT_RATES:'drycu_garment_rates',
   STORE_INFO:   'drycu_store_info',
+  STORE_ID:     'drycu_store_id',
 };
+
+export type SyncStatus = 'idle' | 'syncing' | 'error';
 
 export interface StoreInfoData {
   name: string;
@@ -33,6 +37,16 @@ interface AppContextType {
   topUpRates:           Record<string, number>;
   garmentRateOverrides: Record<string, Partial<GarmentRate>>;
   storeInfo:            StoreInfoData;
+
+  // Multi-device sync — pairs this device to a shop's data by a shareable
+  // code. See context comment above `createNewStore` for how it works.
+  storeId:              string | null;
+  syncStatus:           SyncStatus;
+  lastSyncedAt:         string | null;
+  createNewStore:       (storeName: string) => Promise<string>;
+  joinStore:            (code: string) => Promise<void>;
+  pullLatest:           () => Promise<void>;
+  leaveStore:           () => Promise<void>;
 
   addCustomer:         (data: Omit<Customer, 'id' | 'createdAt'>) => Promise<Customer | null>;
   updateCustomer:      (id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>) => Promise<void>;
@@ -110,16 +124,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [garmentRateOverrides, setGarmentRateOverrides] = useState<Record<string, Partial<GarmentRate>>>({});
   const [storeInfo,            setStoreInfo]            = useState<StoreInfoData>({ ...DEFAULT_STORE_INFO });
 
+  const [storeId,      setStoreId]      = useState<string | null>(null);
+  const [syncStatus,   setSyncStatus]   = useState<SyncStatus>('idle');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  // Set right after a pull/join so the very next state-change effect doesn't
+  // immediately push the data straight back up to the server.
+  const skipNextPush = useRef(false);
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     (async () => {
       try {
-        const [c, o, d, t, g, si] = await Promise.all([
+        const [c, o, d, t, g, si, sid] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.CUSTOMERS),
           AsyncStorage.getItem(STORAGE_KEYS.ORDERS),
           AsyncStorage.getItem(STORAGE_KEYS.NEXT_DI),
           AsyncStorage.getItem(TOPUP_STORAGE_KEY),
           AsyncStorage.getItem(STORAGE_KEYS.GARMENT_RATES),
           AsyncStorage.getItem(STORAGE_KEYS.STORE_INFO),
+          AsyncStorage.getItem(STORAGE_KEYS.STORE_ID),
         ]);
         if (c)  setCustomers(JSON.parse(c));
         if (o)  setOrders(JSON.parse(o));
@@ -127,6 +150,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (t)  setTopUpRates({ ...buildDefaultTopUpRates(), ...JSON.parse(t) });
         if (g)  setGarmentRateOverrides(JSON.parse(g));
         if (si) setStoreInfo({ ...DEFAULT_STORE_INFO, ...JSON.parse(si) });
+        if (sid) {
+          setStoreId(sid);
+          // Loading local data isn't a "change" that should trigger a push.
+          skipNextPush.current = true;
+        }
       } catch (_) {
         // ignore
       } finally {
@@ -177,6 +205,150 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const updated = { ...storeInfo, ...data };
     setStoreInfo(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.STORE_INFO, JSON.stringify(updated));
+  };
+
+  // ── Multi-device sync ──────────────────────────────────────────────────
+  // Whole-document sync: the entire local state is pushed as one JSON blob
+  // to /api/stores/:storeId, and pulling overwrites local state with the
+  // server's blob. This is last-write-wins, not merge — fine for a shop
+  // that's mostly used from one counter device with an occasional second
+  // phone, but two devices editing at the exact same moment can clobber
+  // each other. Different storeId codes never share data, which is what
+  // keeps separate franchise locations fully isolated.
+
+  type Snapshot = {
+    customers: Customer[]; orders: Order[]; nextDI: number;
+    topUpRates: Record<string, number>;
+    garmentRateOverrides: Record<string, Partial<GarmentRate>>;
+    storeInfo: StoreInfoData;
+  };
+
+  // Single-flight push queue: on a flaky connection two overlapping PUTs
+  // can resolve out of order, letting an older snapshot silently clobber a
+  // newer one server-side. Instead of firing requests as changes happen, we
+  // keep at most one request in flight and, if newer local state arrives
+  // while it's outstanding, queue only the LATEST snapshot to send next —
+  // never running two pushes concurrently.
+  const pushInFlight = useRef(false);
+  const pendingPush = useRef<{ sid: string; snapshot: Snapshot } | null>(null);
+
+  const runPush = useCallback(async (sid: string, snapshot: Snapshot) => {
+    pushInFlight.current = true;
+    setSyncStatus('syncing');
+    try {
+      const row = await pushStore(sid, {
+        storeName: snapshot.storeInfo.name,
+        customers: snapshot.customers,
+        orders: snapshot.orders,
+        nextDI: snapshot.nextDI,
+        topUpRates: snapshot.topUpRates,
+        garmentRateOverrides: snapshot.garmentRateOverrides,
+        storeInfo: snapshot.storeInfo as unknown as Record<string, string>,
+      });
+      setLastSyncedAt(row.updatedAt);
+      setSyncStatus('idle');
+    } catch (_) {
+      // Offline or server unreachable — local AsyncStorage remains the
+      // source of truth, so the app keeps working; we just retry on the
+      // next change.
+      setSyncStatus('error');
+    } finally {
+      pushInFlight.current = false;
+      const next = pendingPush.current;
+      pendingPush.current = null;
+      if (next) {
+        // Fire-and-forget: chains to the next queued push, still one at a time.
+        runPush(next.sid, next.snapshot);
+      }
+    }
+  }, []);
+
+  const pushToServer = useCallback(async (sid: string, snapshot: Snapshot) => {
+    if (pushInFlight.current) {
+      // Replace any older queued snapshot — only the freshest state matters.
+      // (Callers that need to await completion, like createNewStore, are
+      // rare enough on a fresh pairing that this fire-and-forget is fine.)
+      pendingPush.current = { sid, snapshot };
+      return;
+    }
+    await runPush(sid, snapshot);
+  }, [runPush]);
+
+  // Debounced auto-push whenever synced data changes, once paired.
+  useEffect(() => {
+    if (!isLoaded || !storeId) return;
+    if (skipNextPush.current) { skipNextPush.current = false; return; }
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => {
+      pushToServer(storeId, { customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo });
+    }, 1500);
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo, storeId, isLoaded]);
+
+  const applyRemoteSnapshot = async (row: {
+    storeId: string; updatedAt: string; customers: unknown; orders: unknown;
+    nextDI: number; topUpRates: Record<string, number>;
+    garmentRateOverrides: Record<string, unknown>; storeInfo: Record<string, string>;
+  }) => {
+    const remoteCustomers = row.customers as Customer[];
+    const remoteOrders = row.orders as Order[];
+    const remoteGarmentRates = row.garmentRateOverrides as Record<string, Partial<GarmentRate>>;
+    const remoteStoreInfo = { ...DEFAULT_STORE_INFO, ...row.storeInfo } as StoreInfoData;
+
+    setCustomers(remoteCustomers);
+    setOrders(remoteOrders);
+    setNextDI(row.nextDI);
+    setTopUpRates({ ...buildDefaultTopUpRates(), ...row.topUpRates });
+    setGarmentRateOverrides(remoteGarmentRates);
+    setStoreInfo(remoteStoreInfo);
+    setStoreId(row.storeId);
+    setLastSyncedAt(row.updatedAt);
+    skipNextPush.current = true;
+
+    await Promise.all([
+      saveCustomers(remoteCustomers),
+      saveOrders(remoteOrders),
+      AsyncStorage.setItem(STORAGE_KEYS.NEXT_DI, row.nextDI.toString()),
+      AsyncStorage.setItem(TOPUP_STORAGE_KEY, JSON.stringify({ ...buildDefaultTopUpRates(), ...row.topUpRates })),
+      AsyncStorage.setItem(STORAGE_KEYS.GARMENT_RATES, JSON.stringify(remoteGarmentRates)),
+      AsyncStorage.setItem(STORAGE_KEYS.STORE_INFO, JSON.stringify(remoteStoreInfo)),
+      AsyncStorage.setItem(STORAGE_KEYS.STORE_ID, row.storeId),
+    ]);
+  };
+
+  // Creates a fresh store code on the server, immediately uploads the
+  // current local data under it, and pairs this device to it.
+  const createNewStore = async (storeName: string): Promise<string> => {
+    const row = await createStore({ storeName });
+    setStoreId(row.storeId);
+    setLastSyncedAt(row.updatedAt);
+    await AsyncStorage.setItem(STORAGE_KEYS.STORE_ID, row.storeId);
+    await pushToServer(row.storeId, { customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo });
+    return row.storeId;
+  };
+
+  // Pairs this device to an existing store code (e.g. typed in from the
+  // shop's other phone) and overwrites local data with that store's data.
+  const joinStore = async (code: string): Promise<void> => {
+    const row = await getStore(code.trim().toUpperCase());
+    await applyRemoteSnapshot(row);
+  };
+
+  // Manually re-pull the latest server snapshot for the currently paired store.
+  const pullLatest = async (): Promise<void> => {
+    if (!storeId) return;
+    const row = await getStore(storeId);
+    await applyRemoteSnapshot(row);
+  };
+
+  // Unpairs this device from sync without deleting any server-side data —
+  // the store code still works on any other device.
+  const leaveStore = async () => {
+    await AsyncStorage.removeItem(STORAGE_KEYS.STORE_ID);
+    setStoreId(null);
+    setLastSyncedAt(null);
+    setSyncStatus('idle');
   };
 
   const findDuplicate = useCallback((name: string, mobile: string, excludeId?: string): Customer | null => {
@@ -342,6 +514,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       customers, orders, nextDI, isLoaded, topUpRates, garmentRateOverrides, storeInfo,
+      storeId, syncStatus, lastSyncedAt, createNewStore, joinStore, pullLatest, leaveStore,
       addCustomer, updateCustomer, deleteCustomer, findDuplicate, searchCustomers, getCustomer,
       updateTopUpRate, updateTopUpRates, updateGarmentRate, resetGarmentRate, updateStoreInfo,
       addOrder, updateOrder, updateOrderStatus, deleteOrder,
