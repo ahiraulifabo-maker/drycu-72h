@@ -39,12 +39,12 @@ export function printTags(order: any, storeInfo: any) {
     }
   });
 
-  const html = `<html><head><title>Tags</title><style>@page { size: 58mm auto; margin: 0; } body { font-family: 'Arial Black', Arial, sans-serif; width: 58mm; margin: 0; padding: 3px; color: #000000; -webkit-print-color-adjust: exact; }</style></head><body>${tagBlocks}</body></html>';
+  const html = <html><head><title>Tags</title><style>@page { size: 58mm auto; margin: 0; } body { font-family: 'Arial Black', Arial, sans-serif; width: 58mm; margin: 0; padding: 3px; color: #000000; -webkit-print-color-adjust: exact; }</style></head><body>${tagBlocks}</body></html>;
   openPrintWindow(html);
 }
 
 export function sendWhatsAppNotification(order: any, customerPhone: string, encodedMessage: string) {
   if (Platform.OS !== 'web') return;
-  const whatsappUrl = `https://web.whatsapp.com/send?phone=${customerPhone}&text=${encodedMessage}';
+  const whatsappUrl = https://web.whatsapp.com/send?phone=${customerPhone}&text=${encodedMessage};
   window.open(whatsappUrl, '_blank');
 }
