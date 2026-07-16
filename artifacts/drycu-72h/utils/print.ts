@@ -199,39 +199,60 @@ export function printBill(order: any, storeInfo: any) {
     if (!String(orderNumber).startsWith('DI-')) orderNumber = 'DI-' + String(orderNumber).replace(/^[A-Za-z-]+/, '').padStart(5, '0');
 
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
-    const stateItems = target.items || target.garments || [];
     
+    // Fallback context: react/redux state objects inside window scope
+    const stateItems = target.items || target.garments || (target.orderItems) || [];
     if (stateItems.length > 0) {
       stateItems.forEach((item: any) => {
         detectedItems.push({
-          name: item.name || item.itemName || 'Garment',
+          name: item.name || item.itemName || item.title || 'Garment',
           service: SERVICE_ABBR[item.service] || item.service || 'DC',
           qty: Number(item.qty || item.quantity || 1),
-          price: Number(item.price || item.rate || item.amount || 0)
+          price: Number(item.price !== undefined ? item.price : (item.rate || item.amount || 0))
         });
       });
     }
 
+    // Advanced Table & DOM scraping to parse active table row cloth names and individual column rates
     if (typeof document !== 'undefined') {
-      const rows = document.querySelectorAll('table tr, .item-row, .cart-item, tr');
+      const rows = document.querySelectorAll('table tr, .item-row, .cart-item, tr, .order-item-list-item');
       let domItems: Array<{name: string, service: string, qty: number, price: number}> = [];
 
       rows.forEach((row: any) => {
         const txt = (row.innerText || '').trim();
+        // Skip header/footer meta rows
         if (!txt || txt.includes('Total') || txt.includes('Gross') || txt.includes('Balance') || txt.includes('Due') || txt.length < 4) return;
 
         const cells = row.querySelectorAll('td, span, div');
         if (cells.length >= 2) {
-          const nameCand = cells[0].innerText ? cells[0].innerText.trim() : '';
-          if (nameCand && isNaN(Number(nameCand)) && !['sr', 'no', 'item', 'action', 'price', 'qty', 'service', 'delete'].some(w => nameCand.toLowerCase().includes(w))) {
-            
+          // Detect cloth name candidate from first columns
+          let nameCand = '';
+          for (let i = 0; i < Math.min(cells.length, 2); i++) {
+            const innerT = (cells[i].innerText || '').trim();
+            if (innerT && isNaN(Number(innerT)) && !['sr', 'no', 'item', 'action', 'price', 'qty', 'service', 'delete', 'edit', 'select'].some(w => innerT.toLowerCase().includes(w))) {
+              nameCand = innerT;
+              break;
+            }
+          }
+          
+          if (nameCand) {
+            // Find appropriate singular item rate by checking late columns
             let rowPrice = 0;
+            let rowQty = 1;
+
+            // Look for quantity input or field
+            const qtyInputs = row.querySelectorAll('input[type="number"], .qty-input, .quantity');
+            if (qtyInputs.length > 0 && qtyInputs[0].value) {
+              rowQty = Number(qtyInputs[0].value) || 1;
+            }
+
+            // Extract accurate parsed numbers to identify currency/rates
             for (let i = cells.length - 1; i >= 1; i--) {
               const cellText = (cells[i].innerText || '').trim();
               const numMatch = cellText.match(/(\d+(?:\.\d+)?)/);
               if (numMatch) {
                 const parsedVal = Number(numMatch[1]);
-                if (parsedVal > 0) {
+                if (parsedVal > 0 && parsedVal !== rowQty) {
                   rowPrice = parsedVal;
                   break;
                 }
@@ -239,23 +260,22 @@ export function printBill(order: any, storeInfo: any) {
             }
 
             let svc = 'DC';
-            if (txt.toLowerCase().includes('laundry')) svc = 'LD';
-            else if (txt.toLowerCase().includes('iron')) svc = 'IR';
-            else if (txt.toLowerCase().includes('top up') || txt.toLowerCase().includes('topup')) svc = 'TP';
+            if (txt.toLowerCase().includes('laundry') || txt.toLowerCase().includes('ld')) svc = 'LD';
+            else if (txt.toLowerCase().includes('iron') || txt.toLowerCase().includes('ir')) svc = 'IR';
+            else if (txt.toLowerCase().includes('top up') || txt.toLowerCase().includes('topup') || txt.toLowerCase().includes('tp')) svc = 'TP';
 
             domItems.push({
-              name: nameCand.split('\n')[0],
+              name: nameCand.split('\n')[0].replace(/[^a-zA-Z0-9\s\-\[\]]/g, '').trim(),
               service: svc,
-              qty: 1,
+              qty: rowQty,
               price: rowPrice
             });
           }
         }
       });
 
-      if (domItems.length > 0 && domItems.reduce((s, i) => s + i.price, 0) > 0) {
-        detectedItems = domItems;
-      } else if (detectedItems.length === 0 && domItems.length > 0) {
+      // Prefer non-zero scraping if state context was shallow
+      if (domItems.length > 0) {
         detectedItems = domItems;
       }
     }
@@ -284,17 +304,17 @@ export function printBill(order: any, storeInfo: any) {
       rowsHtml += `
         <tr style="vertical-align: top;">
           <td style="padding: 4px 0; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important;">
-            • ${item.name} [${item.service}] x ${item.qty}
+            • ${item.name} [${item.service}] x${item.qty}
           </td>
           <td style="padding: 4px 0; text-align: right; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important;">
-            ₹${item.price.toFixed(2)}
+            ₹${(item.price * item.qty).toFixed(2)}
           </td>
         </tr>
       `;
     });
 
     const formattedDate = new Date().toLocaleDateString('en-GB');
-    const readyDate = '19/07/2026';
+    const readyDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB');
 
     const html = `
       <html>
@@ -370,4 +390,4 @@ export function sendWhatsAppNotification(order: any, customerPhone: string, enco
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   try { window.open("https://web.whatsapp.com/send?phone=" + customerPhone + "&text=" + encodedMessage, '_blank'); } catch (e) {}
 }
-// final-layout-forced-update-v11: 778899
+// exact-billing-sync-v12: 554433
