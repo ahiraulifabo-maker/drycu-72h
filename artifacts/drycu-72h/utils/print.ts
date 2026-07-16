@@ -6,68 +6,8 @@ const SERVICE_ABBR: Record<string, string> = {
   Ironing: "IR",
 };
 
-// Helper function to dynamically scan the order object for any customer name or phone string
-function autoScanKey(obj: any, searchType: "name" | "phone"): string | null {
-  if (!obj || typeof obj !== "object") return null;
-
-  // High priority keys
-  if (searchType === "name") {
-    const directName =
-      obj.customerName ||
-      obj.customer_name ||
-      obj.name ||
-      obj.fullName ||
-      obj.customer?.name ||
-      obj.customer?.customerName;
-    if (directName && directName !== "Customer") return String(directName);
-  } else {
-    const directPhone =
-      obj.customerPhone ||
-      obj.customer_phone ||
-      obj.phone ||
-      obj.mobile ||
-      obj.phoneNumber ||
-      obj.customer?.phone ||
-      obj.customer?.mobile;
-    if (directPhone && directPhone !== "N/A") return String(directPhone);
-  }
-
-  // Deep recursive fallback scanner loop
-  for (const key in obj) {
-    if (obj.hasOwnProperty(key) && obj[key]) {
-      const val = obj[key];
-      const lowerKey = key.toLowerCase();
-
-      if (
-        searchType === "name" &&
-        (lowerKey.includes("cust") || lowerKey.includes("name")) &&
-        typeof val === "string" &&
-        val.length > 2 &&
-        val !== "Customer"
-      ) {
-        return val;
-      }
-      if (
-        searchType === "phone" &&
-        (lowerKey.includes("phone") ||
-          lowerKey.includes("mob") ||
-          lowerKey.includes("cell")) &&
-        (typeof val === "string" || typeof val === "number") &&
-        String(val).length >= 10
-      ) {
-        return String(val);
-      }
-      if (typeof val === "object") {
-        const deepResult = autoScanKey(val, searchType);
-        if (deepResult) return deepResult;
-      }
-    }
-  }
-  return null;
-}
-
 // ==========================================
-// 1. PERFECTLY CENTERED TAGS
+// 1. PERFECTLY CENTERED TAGS FOR RIBBON PRINTER
 // ==========================================
 export function printTags(order: any, storeInfo: any) {
   if (Platform.OS !== "web" || typeof window === "undefined" || !order) return;
@@ -82,7 +22,22 @@ export function printTags(order: any, storeInfo: any) {
     ).replace(/^[A-Za-z-]+/, "");
     const formattedId = "DI-" + orderIdStr.padStart(5, "0");
 
-    const customerName = autoScanKey(order, "name") || "Customer";
+    // Safe lookup if data is string key token
+    let customerName = "Customer";
+    if (order.customerName || order.customer_name) {
+      customerName = order.customerName || order.customer_name;
+    } else if (order.customer && typeof order.customer === "object") {
+      customerName =
+        order.customer.name ||
+        order.customer.customerName ||
+        order.customer.fullName ||
+        "Customer";
+    } else if (
+      typeof order.customer === "string" &&
+      !/^[0-9a-zA-Z]{15,}$/.test(order.customer)
+    ) {
+      customerName = order.customer;
+    }
 
     const orderDate = order.createdAt
       ? new Date(order.createdAt).toLocaleDateString("en-GB", {
@@ -152,7 +107,7 @@ export function printTags(order: any, storeInfo: any) {
 }
 
 // ==========================================
-// 2. EXTRA CONCISE BILL (NO MATHEMATICAL DIVISION)
+// 2. EXTRA CONCISE BILL (STRUCTURAL STABILITY PATCH)
 // ==========================================
 export function printBill(order: any, storeInfo: any) {
   if (Platform.OS !== "web" || typeof window === "undefined" || !order) return;
@@ -163,16 +118,40 @@ export function printBill(order: any, storeInfo: any) {
       order.items || order.garments || order.orderItems || order.clothes || [];
     let totalPcs = 0;
 
+    const grossAmount = Number(
+      order.totalAmount ||
+        order.grossAmount ||
+        order.netPayable ||
+        order.amount ||
+        0,
+    );
+    const advance = Number(
+      order.advanceAmount || order.advancePaid || order.advance || 0,
+    );
+    const balance = Number(
+      order.balanceDue || order.balance || grossAmount - advance,
+    );
+
+    // Calculate total count first for balanced visual distribution if items miss database pricing arrays
+    items.forEach((item: any) => {
+      totalPcs += item.qty || item.quantity || 1;
+    });
+    if (totalPcs === 0) totalPcs = items.length || 1;
+
     items.forEach((item: any) => {
       const qty = item.qty || item.quantity || 1;
 
-      // STAGE 1: Real Native Rates only. If 0 or missing, it prints 0. No dynamic division arithmetic.
-      const unitRate = Number(
+      // Extraction rules matching operational states
+      let unitRate = Number(
         item.price || item.rate || item.unitPrice || item.itemPrice || 0,
       );
-      const itemTotal = unitRate * qty;
-      totalPcs += qty;
 
+      // Mathematical breakdown patch if individual arrays fail to pass native price metrics to avoid zero artifacts
+      if (unitRate === 0 && grossAmount > 0) {
+        unitRate = grossAmount / totalPcs;
+      }
+
+      const itemTotal = unitRate * qty;
       const serviceAbbr =
         SERVICE_ABBR[item.serviceType || item.service] ||
         item.serviceType ||
@@ -191,23 +170,42 @@ export function printBill(order: any, storeInfo: any) {
       `;
     });
 
-    const grossAmount = Number(
-      order.totalAmount ||
-        order.grossAmount ||
-        order.netPayable ||
-        order.amount ||
-        0,
-    );
-    const advance = Number(
-      order.advanceAmount || order.advancePaid || order.advance || 0,
-    );
-    const balance = Number(
-      order.balanceDue || order.balance || grossAmount - advance,
-    );
+    // Resolve Customer Identification and Profile details
+    let customerName = "Customer";
+    let customerPhone = "N/A";
 
-    // STAGE 2: Absolute Scanner Mapping for metadata logs
-    const customerName = autoScanKey(order, "name") || "Customer";
-    const customerPhone = autoScanKey(order, "phone") || "N/A";
+    if (order.customerName || order.customer_name) {
+      customerName = order.customerName || order.customer_name;
+    } else if (order.customer && typeof order.customer === "object") {
+      customerName =
+        order.customer.name || order.customer.customerName || "Customer";
+    }
+
+    if (order.customerPhone || order.customer_phone) {
+      customerPhone = order.customerPhone || order.customer_phone;
+    } else if (order.customer && typeof order.customer === "object") {
+      customerPhone = order.customer.phone || order.customer.mobile || "N/A";
+    }
+
+    // IF SYSTEM OUTPUTS A CRYPTIC UID INSTEAD OF STRINGS, DO AN ALTERNATIVE MAPPING INTERSECTION
+    if (
+      /^[0-9a-zA-Z_-]{15,}$/.test(customerName) ||
+      customerName === "Customer"
+    ) {
+      if (order.customerDetails?.name)
+        customerName = order.customerDetails.name;
+      else if (order.clientName) customerName = order.clientName;
+      else if (order.user?.name) customerName = order.user.name;
+    }
+
+    if (customerPhone === "N/A") {
+      if (order.customerDetails?.phone || order.customerDetails?.mobile)
+        customerPhone =
+          order.customerDetails.phone || order.customerDetails.mobile;
+      else if (order.clientPhone) customerPhone = order.clientPhone;
+      else if (order.user?.phone || order.user?.mobile)
+        customerPhone = order.user.phone || order.user.mobile;
+    }
 
     const orderIdStr = String(
       order.id || order.orderNumber || order.uid || "",
