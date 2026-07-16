@@ -151,10 +151,11 @@ export function printBill(order: any, storeInfo: any) {
         if (phoneMatch) customerPhone = phoneMatch[0];
       }
 
+      // Hard scanning inputs & selectors for real customer name updates
       const inputs = document.querySelectorAll('input, select, textarea');
       inputs.forEach((inp: any) => {
         const val = inp.value ? inp.value.trim() : '';
-        if (!val) return;
+        if (!val || val.length < 3) return;
 
         if (/^\d{10}$/.test(val)) {
           customerPhone = val;
@@ -164,22 +165,20 @@ export function printBill(order: any, storeInfo: any) {
         const lowerId = (inp.id || '').toLowerCase();
         const lowerName = (inp.name || '').toLowerCase();
         const lowerPlace = (inp.placeholder || '').toLowerCase();
-        const attrText = (inp.getAttribute('data-name') || '').toLowerCase();
         const parentText = inp.parentElement ? inp.parentElement.innerText.toLowerCase() : '';
 
-        if (!customerName || customerName.toLowerCase() === 'customer' || customerName.toLowerCase() === 'walk-in customer') {
-          if (
-            lowerId.includes('name') || lowerName.includes('name') || lowerPlace.includes('name') || 
-            lowerId.includes('cust') || lowerName.includes('cust') || lowerPlace.includes('cust') ||
-            parentText.includes('name') || parentText.includes('customer') || attrText.includes('name')
-          ) {
-            if (isNaN(Number(val)) && val.length > 2) {
-              customerName = val;
-            }
+        if (
+          lowerId.includes('name') || lowerName.includes('name') || lowerPlace.includes('name') || 
+          lowerId.includes('cust') || lowerName.includes('cust') || lowerPlace.includes('cust') ||
+          parentText.includes('name') || parentText.includes('customer')
+        ) {
+          if (isNaN(Number(val)) && val.toLowerCase() !== 'customer' && val.toLowerCase() !== 'walk-in customer') {
+            customerName = val;
           }
         }
       });
 
+      // DOM pattern matching context fallback for client identification
       if (!customerName || customerName.toLowerCase() === 'customer' || customerName.toLowerCase() === 'walk-in customer') {
         const elements = document.querySelectorAll('h1, h2, h3, h4, span, div, p, td, label');
         for (let el of Array.from(elements)) {
@@ -193,15 +192,19 @@ export function printBill(order: any, storeInfo: any) {
       }
     }
 
+    if (!customerName || customerName.toLowerCase() === 'customer' || customerName.toLowerCase() === 'walk-in customer') {
+      // Direct hard filter check across common text variables
+      if ((window as any).selectedCustomer?.name) customerName = (window as any).selectedCustomer.name;
+    }
+
     if (!customerName || customerName.toLowerCase() === 'customer') customerName = 'Walk-in Customer';
     if (!customerPhone || customerPhone === 'N/A') customerPhone = '9517498557';
     if (!orderNumber) orderNumber = 'DI-' + String(Math.floor(Math.random() * 90000) + 10000);
     if (!String(orderNumber).startsWith('DI-')) orderNumber = 'DI-' + String(orderNumber).replace(/^[A-Za-z-]+/, '').padStart(5, '0');
 
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
+    const stateItems = target.items || target.garments || target.orderItems || [];
     
-    // Fallback context: react/redux state objects inside window scope
-    const stateItems = target.items || target.garments || (target.orderItems) || [];
     if (stateItems.length > 0) {
       stateItems.forEach((item: any) => {
         detectedItems.push({
@@ -213,19 +216,17 @@ export function printBill(order: any, storeInfo: any) {
       });
     }
 
-    // Advanced Table & DOM scraping to parse active table row cloth names and individual column rates
+    // Heavy direct fallback DOM cell text & numeric parser for custom individual cloth rates
     if (typeof document !== 'undefined') {
       const rows = document.querySelectorAll('table tr, .item-row, .cart-item, tr, .order-item-list-item');
       let domItems: Array<{name: string, service: string, qty: number, price: number}> = [];
 
       rows.forEach((row: any) => {
         const txt = (row.innerText || '').trim();
-        // Skip header/footer meta rows
         if (!txt || txt.includes('Total') || txt.includes('Gross') || txt.includes('Balance') || txt.includes('Due') || txt.length < 4) return;
 
         const cells = row.querySelectorAll('td, span, div');
         if (cells.length >= 2) {
-          // Detect cloth name candidate from first columns
           let nameCand = '';
           for (let i = 0; i < Math.min(cells.length, 2); i++) {
             const innerT = (cells[i].innerText || '').trim();
@@ -236,36 +237,42 @@ export function printBill(order: any, storeInfo: any) {
           }
           
           if (nameCand) {
-            // Find appropriate singular item rate by checking late columns
             let rowPrice = 0;
             let rowQty = 1;
 
-            // Look for quantity input or field
-            const qtyInputs = row.querySelectorAll('input[type="number"], .qty-input, .quantity');
-            if (qtyInputs.length > 0 && qtyInputs[0].value) {
-              rowQty = Number(qtyInputs[0].value) || 1;
-            }
-
-            // Extract accurate parsed numbers to identify currency/rates
-            for (let i = cells.length - 1; i >= 1; i--) {
-              const cellText = (cells[i].innerText || '').trim();
-              const numMatch = cellText.match(/(\d+(?:\.\d+)?)/);
-              if (numMatch) {
-                const parsedVal = Number(numMatch[1]);
-                if (parsedVal > 0 && parsedVal !== rowQty) {
-                  rowPrice = parsedVal;
-                  break;
-                }
+            // Direct inner elements numeric evaluation for exact row value mapping
+            const numberTokens: number[] = [];
+            cells.forEach((c: any) => {
+              const cleaned = (c.innerText || '').replace(/[^\d\.]/g, '').trim();
+              if (cleaned && !isNaN(Number(cleaned))) {
+                numberTokens.push(Number(cleaned));
               }
+            });
+
+            const inputElements = row.querySelectorAll('input');
+            inputElements.forEach((inp: any) => {
+              if (inp.value && !isNaN(Number(inp.value))) {
+                numberTokens.push(Number(inp.value));
+              }
+            });
+
+            // Extract valid individual item prices
+            if (numberTokens.length > 0) {
+              const highPrices = numberTokens.filter(n => n >= 10 && n <= 5000);
+              if (highPrices.length > 0) {
+                rowPrice = highPrices[0]; 
+              }
+              const potentialQty = numberTokens.filter(n => n > 0 && n < 10);
+              if (potentialQty.length > 0) rowQty = potentialQty[0];
             }
 
             let svc = 'DC';
-            if (txt.toLowerCase().includes('laundry') || txt.toLowerCase().includes('ld')) svc = 'LD';
-            else if (txt.toLowerCase().includes('iron') || txt.toLowerCase().includes('ir')) svc = 'IR';
-            else if (txt.toLowerCase().includes('top up') || txt.toLowerCase().includes('topup') || txt.toLowerCase().includes('tp')) svc = 'TP';
+            if (txt.toLowerCase().includes('laundry')) svc = 'LD';
+            else if (txt.toLowerCase().includes('iron')) svc = 'IR';
+            else if (txt.toLowerCase().includes('top up') || txt.toLowerCase().includes('topup')) svc = 'TP';
 
             domItems.push({
-              name: nameCand.split('\n')[0].replace(/[^a-zA-Z0-9\s\-\[\]]/g, '').trim(),
+              name: nameCand.split('\n')[0].replace(/[^a-zA-Z0-9\s\-\[\]\/]/g, '').trim(),
               service: svc,
               qty: rowQty,
               price: rowPrice
@@ -274,7 +281,6 @@ export function printBill(order: any, storeInfo: any) {
         }
       });
 
-      // Prefer non-zero scraping if state context was shallow
       if (domItems.length > 0) {
         detectedItems = domItems;
       }
@@ -301,13 +307,15 @@ export function printBill(order: any, storeInfo: any) {
 
     let rowsHtml = '';
     detectedItems.forEach((item) => {
+      // Force individual baseline backup rate placeholder fallback if parsing dropped to absolute 0
+      const displayPrice = item.price > 0 ? item.price : (grossAmount / Math.max(totalPcs, 1));
       rowsHtml += `
         <tr style="vertical-align: top;">
           <td style="padding: 4px 0; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important;">
             • ${item.name} [${item.service}] x${item.qty}
           </td>
           <td style="padding: 4px 0; text-align: right; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important;">
-            ₹${(item.price * item.qty).toFixed(2)}
+            ₹${(displayPrice * item.qty).toFixed(2)}
           </td>
         </tr>
       `;
@@ -390,4 +398,4 @@ export function sendWhatsAppNotification(order: any, customerPhone: string, enco
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   try { window.open("https://web.whatsapp.com/send?phone=" + customerPhone + "&text=" + encodedMessage, '_blank'); } catch (e) {}
 }
-// exact-billing-sync-v12: 554433
+// bulletproof-scraped-prices-v14: 998811
