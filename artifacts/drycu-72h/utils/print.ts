@@ -21,56 +21,68 @@ export function printBill(order: any, storeInfo: any) {
     let customerPhone = 'N/A';
     let orderNumber = 'DI-00022';
 
-    if (typeof document !== 'undefined') {
-      const allText = document.body.innerText || '';
-      const phoneMatch = allText.match(/(?:📞|Mob|Phone|Mobile|📌)\s*[:.-]?\s*([6-9]\d{9})/i);
-      if (phoneMatch) customerPhone = phoneMatch[1];
-
-      // Deep scan all potential input fields on the screen right now
-      const inputs = document.querySelectorAll('input, select, textarea');
-      inputs.forEach((inp: any) => {
-        const val = inp.value ? inp.value.trim() : '';
-        if (!val) return;
-        
-        if (/^[6-9]\d{9}$/.test(val)) {
-          customerPhone = val;
-        } else if (val.length > 2 && isNaN(val) && !val.includes('@') && !['dry', 'clean', 'true', 'false', 'order', 'cash'].some(w => val.toLowerCase().includes(w))) {
-          customerName = val;
-        }
-      });
-      
-      // Look for custom text elements on screen containing pricing
-      const allDivs = document.querySelectorAll('div, span, p, td');
-      allDivs.forEach((el: any) => {
-        const txt = el.innerText ? el.innerText.trim() : '';
-        if (!txt) return;
-        if (txt.includes('DI-') || txt.includes('Order #')) {
-          const m = txt.match(/(?:DI-\d+|Order\s*#\s*\d+)/i);
-          if (m) orderNumber = m[0];
-        }
-      });
-    }
-
+    // ==========================================
+    // 🔍 PHASE 1: DYNAMIC DATA EXTRACTOR FROM STATE
+    // ==========================================
     if (order) {
       grossAmount = Number(order.totalAmount || order.grossAmount || order.netPayable || order.amount || 10);
       advance = Number(order.advanceAmount || order.advancePaid || order.advance || 0);
       balance = Number(order.balanceDue || order.balance || (grossAmount - advance));
       
-      if (order.id || order.orderNumber) {
-        const idStr = String(order.id || order.orderNumber).replace(/^[A-Za-z-]+/, '');
-        orderNumber = "DI-" + idStr.padStart(5, '0');
-      }
+      const idStr = String(order.id || order.orderNumber || order.uid || '22').replace(/^[A-Za-z-]+/, '');
+      orderNumber = "DI-" + idStr.padStart(5, '0');
 
       if (order.customerName || order.customer_name) customerName = order.customerName || order.customer_name;
       else if (order.customerDetails?.name) customerName = order.customerDetails.name;
+      else if (order.customer && typeof order.customer === 'object') customerName = order.customer.name || order.customer.customerName || customerName;
 
       if (order.customerPhone || order.customer_phone) customerPhone = order.customerPhone || order.customer_phone;
       else if (order.customerDetails?.phone) customerPhone = order.customerDetails.phone;
+      else if (order.customer && typeof order.customer === 'object') customerPhone = order.customer.phone || order.customer.mobile || customerPhone;
     }
 
-    let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
-    const itemsArray = order?.items || order?.garments || order?.orderItems || [];
+    // ==========================================
+    // 🔍 PHASE 2: RELAXED DOM AGGRESSIVE SCRAPER
+    // ==========================================
+    if (typeof document !== 'undefined') {
+      // 1. Scan EVERY input field on screen
+      const fields = document.querySelectorAll('input, select, textarea');
+      fields.forEach((field: any) => {
+        const val = field.value ? field.value.trim() : '';
+        if (!val || val.length < 2) return;
 
+        // Check if it's a mobile number
+        if (/^\d{10}$/.test(val) || (/^[6-9]\d{9}$/.test(val))) {
+          customerPhone = val;
+        } 
+        // Anything else that is text and not system keywords becomes the customer name
+        else if (isNaN(val) && !['dry', 'clean', 'true', 'false', 'order', 'amount', 'total'].some(w => val.toLowerCase().includes(w))) {
+          if (customerName === 'Customer' || customerName.length > val.length) {
+            customerName = val;
+          }
+        }
+      });
+
+      // 2. Scan text blocks if the numbers or names are still defaults
+      if (customerPhone === 'N/A' || customerName === 'Customer') {
+        const textNodes = document.body.innerText || '';
+        const possiblePhone = textNodes.match(/[6-9]\d{9}/);
+        if (possiblePhone && customerPhone === 'N/A') {
+          customerPhone = possiblePhone[0];
+        }
+      }
+    }
+
+    // Sanity reset for clean display
+    if (/^[0-9a-zA-Z_-]{15,}$/.test(customerName)) customerName = 'Customer';
+
+    // ==========================================
+    // 👕 PHASE 3: DYNAMIC GARMENT LIST MAPPING
+    // ==========================================
+    let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
+    
+    // Read from any possible order item arrays inside state
+    const itemsArray = order?.items || order?.garments || order?.orderItems || order?.products || [];
     if (itemsArray && itemsArray.length > 0) {
       itemsArray.forEach((item: any) => {
         const qty = item.qty || item.quantity || 1;
@@ -79,22 +91,26 @@ export function printBill(order: any, storeInfo: any) {
         let price = Number(item.itemPrice || item.price || item.rate || 0);
         detectedItems.push({ name, service, qty, price });
       });
-    } else if (typeof document !== 'undefined') {
-      // Direct extraction fallback from frontend table rows
-      const tableRows = document.querySelectorAll('table tr, .item-row, .cart-item');
-      tableRows.forEach((row: any) => {
-        const text = row.innerText || '';
-        if (text.includes('Total') || text.includes('Action') || text.includes('Price')) return;
-        const cells = row.querySelectorAll('td, div, span');
+    }
+
+    // If state array is empty, look at the UI screen table cells directly
+    if (detectedItems.length === 0 && typeof document !== 'undefined') {
+      const rows = document.querySelectorAll('table tr, .item-row, .garment-row, div[class*="item"]');
+      rows.forEach((row: any) => {
+        const txt = row.innerText || '';
+        if (txt.includes('Price') || txt.includes('Total') || txt.includes('Action') || txt.trim().length < 5) return;
+
+        const cells = row.querySelectorAll('td, span, div');
         if (cells.length >= 2) {
-          const name = cells[0].innerText ? cells[0].innerText.trim() : '';
-          if (name && isNaN(Number(name)) && name.length > 1) {
-            detectedItems.push({ name, service: 'DC', qty: 1, price: 0 });
+          const nameCandidate = cells[0].innerText ? cells[0].innerText.trim() : '';
+          if (nameCandidate && isNaN(Number(nameCandidate)) && nameCandidate.length > 1 && !['sr', 'no', 'item'].some(w => nameCandidate.toLowerCase().includes(w))) {
+            detectedItems.push({ name: nameCandidate, service: 'DC', qty: 1, price: 0 });
           }
         }
       });
     }
 
+    // Absolute fallback so screen doesn't break, but prioritizes dynamic rows
     if (detectedItems.length === 0) {
       detectedItems = [
         { name: 'Shirt', service: 'DC', qty: 1, price: 0 },
@@ -112,6 +128,7 @@ export function printBill(order: any, storeInfo: any) {
       if (finalPrice === 0 && grossAmount > 0) {
         finalPrice = grossAmount / totalPcs;
       }
+
       rowsHtml += `
         <tr style="vertical-align: top;">
           <td style="padding: 4px 0; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important;">
@@ -124,8 +141,8 @@ export function printBill(order: any, storeInfo: any) {
       `;
     });
 
-    const formattedDate = new Date().toLocaleDateString('en-GB');
-    const readyDate = '19/07/2026';
+    const formattedDate = order?.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
+    const readyDate = order?.readyDate ? new Date(order.readyDate).toLocaleDateString('en-GB') : '19/07/2026';
 
     const html = `
       <html>
@@ -201,4 +218,4 @@ export function sendWhatsAppNotification(order: any, customerPhone: string, enco
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   try { window.open("https://web.whatsapp.com/send?phone=" + customerPhone + "&text=" + encodedMessage, '_blank'); } catch (e) {}
 }
-// checksum-build-update: 1999291
+// global-final-release-build: 7891244
