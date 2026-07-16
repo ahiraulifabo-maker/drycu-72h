@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 const SERVICE_ABBR: Record<string, string> = {
   "Dry Cleaning": "DC",
   Laundry: "LD",
@@ -5,7 +7,7 @@ const SERVICE_ABBR: Record<string, string> = {
 };
 
 // ==========================================
-// 1. FIXED & FULLY COMPATIBLE CLOTH TAGS
+// 1. COMPACT CLOTH TAGS
 // ==========================================
 export function printTags(order: any, storeInfo: any) {
   if (Platform.OS !== "web" || typeof window === "undefined" || !order) return;
@@ -20,13 +22,12 @@ export function printTags(order: any, storeInfo: any) {
     );
     const formattedId = "DI-" + orderIdStr.padStart(5, "0");
 
-    // Robust dynamic object safety parsing for customer details
     const customerName =
       order.customerName ||
       order.customer?.name ||
       order.customer?.customerName ||
+      order.customer?.fullName ||
       "Customer";
-
     const orderDate = order.createdAt
       ? new Date(order.createdAt).toLocaleDateString("en-GB", {
           day: "2-digit",
@@ -34,7 +35,6 @@ export function printTags(order: any, storeInfo: any) {
           year: "2-digit",
         })
       : "";
-
     const readyDateRaw =
       order.readyDate || order.pickupDeadline || order.deliveryDate || "";
     const formattedReadyDate = readyDateRaw
@@ -55,15 +55,15 @@ export function printTags(order: any, storeInfo: any) {
 
       for (let i = 1; i <= totalQty; i++) {
         tagBlocks += `
-          <div style="width: 50mm; padding: 4px; margin-bottom: 15px; border-bottom: 2px dashed #000; font-family: 'Courier New', monospace; font-size: 13px; font-weight: 900; color: #000 !important; page-break-inside: avoid;">
-            <div style="font-size: 20px; font-weight: 900; text-align: left; letter-spacing: 0.5px; color: #000 !important;">${formattedId}</div>
-            <div style="font-size: 15px; font-weight: 900; margin-top: 2px; color: #000 !important;">${customerName}</div>
-            <div style="margin: 3px 0; font-size: 14px; font-weight: 900; color: #000 !important;">
+          <div style="width: 50mm; padding: 2px; margin-bottom: 8px; border-bottom: 1px dashed #000; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important; page-break-inside: avoid;">
+            <div style="font-size: 16px; font-weight: 900; text-align: left;">${formattedId}</div>
+            <div style="font-size: 13px; font-weight: 900; margin-top: 1px;">${customerName}</div>
+            <div style="margin: 2px 0; font-size: 12px; font-weight: 900;">
               <span>${service}</span> &nbsp;&nbsp;&nbsp;&nbsp; <span>${i}/${totalQty}</span>
             </div>
-            <div style="font-size: 12px; margin-top: 2px; line-height: 1.2; font-weight: 900; color: #000 !important;">
+            <div style="font-size: 11px; line-height: 1.1; font-weight: 900;">
               Ready: ${formattedReadyDate}<br>
-              Item: ${item.itemName || item.name || ""}<br>
+              Item: ${item.itemName || item.name || "Garment"}<br>
               Booked: ${orderDate}
             </div>
           </div>
@@ -72,7 +72,7 @@ export function printTags(order: any, storeInfo: any) {
     });
 
     const html =
-      "<html><head><title>Tags</title><style>@page { size: 58mm auto; margin: 0; } * { font-weight: 900 !important; color: #000 !important; } body { margin: 0; padding: 4px; }</style></head><body>" +
+      "<html><head><title>Tags</title><style>@page { size: 58mm auto; margin: 0; } * { font-weight: 900 !important; color: #000 !important; } body { margin: 0; padding: 2px; }</style></head><body>" +
       tagBlocks +
       "</body></html>";
 
@@ -92,7 +92,7 @@ export function printTags(order: any, storeInfo: any) {
 }
 
 // ==========================================
-// 2. EXTRA BOLD PREMIUM VIBE BILL (STAYS FRESH)
+// 2. CONCISE & ULTRA SHORT EXTRA BOLD BILL
 // ==========================================
 export function printBill(order: any, storeInfo: any) {
   if (Platform.OS !== "web" || typeof window === "undefined" || !order) return;
@@ -103,11 +103,29 @@ export function printBill(order: any, storeInfo: any) {
     let totalPcs = 0;
     let grossAmount = 0;
 
+    // Direct global price map handling fallbacks
+    const globalTotal =
+      order.totalAmount ||
+      order.grossAmount ||
+      order.netPayable ||
+      order.financials?.grossAmount ||
+      0;
+
     items.forEach((item: any) => {
       const qty = item.qty || item.quantity || 1;
-      const unitRate = item.price ?? item.rate ?? item.amount ?? item.cost ?? 0;
-      const itemTotal = unitRate * qty;
 
+      // Calculate unit rate with global context fallbacks if individual items are zeroed out
+      let unitRate = item.price ?? item.rate ?? item.amount ?? item.cost ?? 0;
+      if (
+        unitRate === 0 &&
+        globalTotal > 0 &&
+        items.length > 0 &&
+        grossAmount === 0
+      ) {
+        unitRate = globalTotal / items.length;
+      }
+
+      const itemTotal = unitRate * qty;
       totalPcs += qty;
       grossAmount += itemTotal;
 
@@ -119,27 +137,26 @@ export function printBill(order: any, storeInfo: any) {
 
       itemRows += `
         <tr style="vertical-align: top;">
-          <td style="padding: 6px 0; font-family: 'Courier New', monospace; font-size: 13px; font-weight: 900; color: #000 !important;">
-            <div style="font-weight: 900;">• ${item.itemName || item.name || "Garment Item"}</div>
-            <div style="font-size: 11px; padding-left: 10px; font-weight: 900; color: #000 !important;">[${serviceAbbr}] x ${qty}</div>
+          <td style="padding: 3px 0; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900;">
+            • ${item.itemName || item.name || "Garment"} [${serviceAbbr}] x ${qty}
           </td>
-          <td style="padding: 6px 0; text-align: right; font-family: 'Courier New', monospace; font-size: 13px; font-weight: 900; color: #000 !important;">
-            ₹ ${itemTotal.toFixed(2)}
+          <td style="padding: 3px 0; text-align: right; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900;">
+            ₹${itemTotal.toFixed(2)}
           </td>
         </tr>
       `;
     });
 
-    if (grossAmount === 0) {
-      grossAmount =
-        order.totalAmount ||
-        order.grossAmount ||
-        order.netPayable ||
-        order.financials?.grossAmount ||
-        0;
+    if (grossAmount === 0 || Math.abs(grossAmount - globalTotal) > 1) {
+      grossAmount = globalTotal;
     }
     if (totalPcs === 0) {
-      totalPcs = order.totalQty || order.totalQuantity || order.totalPcs || 1;
+      totalPcs =
+        order.totalQty ||
+        order.totalQuantity ||
+        order.totalPcs ||
+        items.length ||
+        1;
     }
 
     const advance =
@@ -150,6 +167,7 @@ export function printBill(order: any, storeInfo: any) {
       order.customerName ||
       order.customer?.name ||
       order.customer?.customerName ||
+      order.customer?.fullName ||
       "Customer";
     const customerPhone =
       order.customerPhone ||
@@ -164,114 +182,87 @@ export function printBill(order: any, storeInfo: any) {
     const formattedOrderId = "DI-" + orderIdStr.padStart(5, "0");
 
     const formattedDate = order.createdAt
-      ? new Date(order.createdAt).toLocaleString("en-US", { hour12: true })
-      : new Date().toLocaleString();
+      ? new Date(order.createdAt).toLocaleDateString("en-GB")
+      : new Date().toLocaleDateString("en-GB");
 
     const readyDateRaw =
       order.readyDate || order.pickupDeadline || order.deliveryDate || "TBD";
     const readyDate =
       readyDateRaw && readyDateRaw !== "TBD"
-        ? new Date(readyDateRaw).toLocaleString("en-US", { hour12: true })
+        ? new Date(readyDateRaw).toLocaleDateString("en-GB")
         : "TBD";
 
     const html = `
       <html>
       <head>
-        <title>Premium Extra Bold Bill</title>
+        <title>Short Premium Bill</title>
         <style>
           @page { size: 58mm auto; margin: 0; }
-          * { box-sizing: border-box; font-weight: 900 !important; color: #000 !important; }
+          * { box-sizing: border-box; font-weight: 900 !important; color: #000 !important; margin: 0; padding: 0; }
           body { 
             font-family: 'Courier New', Courier, monospace; 
             width: 54mm; 
-            margin: 0; 
-            padding: 6px; 
-            font-size: 12px; 
-            line-height: 1.3;
+            padding: 4px; 
+            font-size: 11px; 
+            line-height: 1.2;
             background-color: #fff;
           }
           .center { text-align: center; }
           .bold { font-weight: 900; }
-          .line { border-top: 2px dashed #000; margin: 6px 0; }
-          .double-line { border-top: 3px double #000; margin: 6px 0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-          td, th { color: #000; font-weight: 900; }
+          .line { border-top: 1px dashed #000; margin: 4px 0; }
+          table { width: 100%; border-collapse: collapse; margin-top: 2px; }
+          td { color: #000; font-weight: 900; }
           .tc-block {
-            font-size: 10.5px; 
+            font-size: 9px; 
             text-align: justify; 
-            margin-top: 4px; 
-            line-height: 1.3; 
+            margin-top: 3px; 
+            line-height: 1.1; 
             font-weight: 900;
           }
         </style>
       </head>
       <body>
-        <div class="center bold" style="font-size: 16px; letter-spacing: 1px;">⚡ D R Y C U - 7 2 H ⚡</div>
-        <div class="center bold" style="font-size: 13px; margin-top: 1px;">A H I R A U L I</div>
-        <div class="center" style="font-size: 10px; margin-top: 3px;">📍 Opp Indian Oil Petrol Pump, Ahirauli<br>📞 Contact: 9519705388<br>🌐 www.drycu-72h.in</div>
-        <div class="line"></div>
-        <div class="center bold" style="font-size: 10px; letter-spacing: 0.5px;">[ ZERO ERROR • NEATNESS OBJECTIVE ]</div>
-        <div class="double-line"></div>
-        
-        <div class="bold" style="font-size: 17px; margin: 4px 0;">ORDER NO: 💥 ${formattedOrderId} 💥</div>
-        <div style="font-size: 13px; margin-bottom: 2px;"><b>CUSTOMER :</b> ${customerName}</div>
-        <div style="font-size: 13px; margin-bottom: 2px;"><b>PHONE    :</b> ${customerPhone}</div>
-        <div style="font-size: 12px;"><b>DATE     :</b> ${formattedDate}</div>
-        
-        <div class="double-line"></div>
-        <div class="bold" style="font-size: 12px; letter-spacing: 0.5px;">ITEM DETAILS</div>
+        <!-- FIXED HEADER WITHOUT LAYOUT BREAK -->
+        <div class="center bold" style="font-size: 13px; letter-spacing: 0.2px;">⚡DRYCU-72H⚡</div>
+        <div class="center bold" style="font-size: 11px;">AHIRAULI</div>
+        <div class="center" style="font-size: 9px;">📍 Opp Indian Oil Petrol Pump<br>📞 9519705388 | www.drycu-72h.in</div>
         <div class="line"></div>
         
-        <table>
+        <div class="bold" style="font-size: 13px; margin: 2px 0;">ORDER NO: ${formattedOrderId}</div>
+        <div style="font-size: 11px;"><b>CUST:</b> ${customerName}</div>
+        <div style="font-size: 11px;"><b>MOB :</b> ${customerPhone}</div>
+        <div style="font-size: 11px;"><b>DATE:</b> ${formattedDate} | <b>RDY:</b> ${readyDate}</div>
+        
+        <div class="line"></div>
+        <table style="margin-bottom: 2px;">
           <tbody>
             ${itemRows}
           </tbody>
         </table>
         
-        <div class="double-line"></div>
-        <div class="bold" style="font-size: 12px; letter-spacing: 0.5px;">TOTAL SUMMARY</div>
         <div class="line"></div>
-        
-        <table style="font-size: 13px;">
-          <tr>
-            <td>TOTAL PCS</td>
-            <td style="text-align: right; font-weight: 900;">${totalPcs} Pcs</td>
-          </tr>
-          <tr>
-            <td>GROSS AMOUNT</td>
-            <td style="text-align: right; font-weight: 900;">₹ ${grossAmount.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td>ADVANCE PAID</td>
-            <td style="text-align: right; font-weight: 900;">₹ ${advance.toFixed(2)}</td>
-          </tr>
-          <tr style="font-size: 14px; font-weight: 900;">
-            <td style="padding-top: 6px;">🧾 BALANCE DUE</td>
-            <td style="text-align: right; padding-top: 6px; border-top: 2px dashed #000; font-size: 15px;">₹ ${balance.toFixed(2)}</td>
+        <table style="font-size: 11px;">
+          <tr><td>TOTAL PCS</td><td style="text-align: right;">${totalPcs} Pcs</td></tr>
+          <tr><td>GROSS AMT</td><td style="text-align: right;">₹${grossAmount.toFixed(2)}</td></tr>
+          <tr><td>ADV PAID</td><td style="text-align: right;">₹${advance.toFixed(2)}</td></tr>
+          <tr style="font-size: 12px; font-weight: 900;">
+            <td style="padding-top: 2px;">🧾 DUE BAL</td>
+            <td style="text-align: right; padding-top: 2px; border-top: 1px dashed #000; font-size: 13px;">₹${balance.toFixed(2)}</td>
           </tr>
         </table>
         
-        <div class="double-line"></div>
-        <div style="margin: 4px 0; font-size: 12px;">📅 <b>READY ON:</b> ${readyDate}</div>
-        <div style="font-size: 12px;">⏱️ <b>TIMING  :</b> 9:00 AM - 8:00 PM</div>
-        <div class="double-line"></div>
-        
-        <div class="center bold" style="font-size: 11px; letter-spacing: 0.5px;">TERMS & CONDITIONS</div>
+        <div class="line"></div>
+        <div class="center bold" style="font-size: 9px;">TERMS & CONDITIONS</div>
         <div class="tc-block">
-          #1. DRYCU-72H is not liable for color fastness, threads-out, missing buttons, or any other damages.<br>
-          #2. Report damages, missing items, or exchanged clothes within 24 hours of delivery.<br>
-          #3. Refer to our website for complete Terms and Conditions.<br>
-          #4. We aim for on-time delivery, but if delays occur due to unforeseen circumstances, we'll keep you updated.<br>
-          #5. We accept no liability for any loss or damage of clothes arising due to washing, fire, burglary etc.<br>
-          #6. If the customer fails to collect their clothes within 15 days of the delivery date, the store shall not be held responsible for any loss or damage.
+          #1. Not liable for color fastness/missing buttons. #2. Claim within 24h. #3. Complete T&C on site. #4. Not responsible for clothes left >15 days.
         </div>
         
-        <div class="double-line"></div>
-        <div class="center bold" style="font-size: 11px; margin: 10px 0;">⚡ THANK YOU FOR CHOOSING US ⚡</div>
+        <div class="line"></div>
+        <div class="center bold" style="font-size: 9px; margin: 4px 0;">⚡ THANK YOU ⚡</div>
         
-        <div style="margin-top: 35px; display: flex; justify-content: space-between; font-size: 10px;">
-          <span style="border-top: 2px solid #000; width: 80px; text-align: center; padding-top: 2px; font-weight: 900;">CUSTOMER</span>
-          <span style="border-top: 2px solid #000; width: 80px; text-align: center; padding-top: 2px; font-weight: 900;">SIGNATURE</span>
+        <div style="margin-top: 20px; display: flex; justify-content: space-between; font-size: 9px;">
+          <span style="border-top: 1px solid #000; width: 45%; text-align: center; padding-top: 1px;">CUSTOMER</span>
+          <span style="border-top: 1px solid #000; width: 45%; text-align: center; padding-top: 1px;">SIGNATURE</span>
         </div>
       </body>
       </html>
