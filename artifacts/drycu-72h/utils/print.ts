@@ -7,13 +7,13 @@ const SERVICE_ABBR: Record<string, string> = {
 
 export function printTags(order: any, storeInfo: any) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  // Tags print logic goes here if needed
 }
 
 export function printBill(order: any, storeInfo: any) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
   try {
-    // 1. EXTRACT FROM ALL POSSIBLE ROOT APP CONTEXTS
     const target = order || (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {};
     
     let customerName = target.customerName || target.customerDetails?.name || target.name || '';
@@ -21,18 +21,17 @@ export function printBill(order: any, storeInfo: any) {
     let grossAmount = Number(target.totalAmount || target.grossAmount || target.amount || 0);
     let advance = Number(target.advanceAmount || target.advancePaid || target.advance || 0);
     let orderNumber = target.orderNumber || target.id || '';
+    let balance = 0; // Fixed: Declared upfront globally inside the try block
 
-    // 2. ULTIMATE DOM HOOK OVERRIDE FOR INPUT FIELDS & DYNAMIC LABELS
+    // 1. DOM SCRAPER FOR INPUT FIELDS & DYNAMIC LABELS
     if (typeof document !== 'undefined') {
       const allText = document.body.innerText || '';
 
-      // Fallback Phone Scanning
       if (!customerPhone || customerPhone === 'N/A') {
         const phoneMatch = allText.match(/[6-9]\d{9}/);
         if (phoneMatch) customerPhone = phoneMatch[0];
       }
 
-      // Input Inspection Loop (Name & Data Attributes extraction)
       const inputs = document.querySelectorAll('input, select, textarea');
       inputs.forEach((inp: any) => {
         const val = inp.value ? inp.value.trim() : '';
@@ -62,7 +61,6 @@ export function printBill(order: any, storeInfo: any) {
         }
       });
 
-      // Strict Regex text extraction for Name labels if inputs are unmounted
       if (!customerName || customerName.toLowerCase() === 'customer' || customerName.toLowerCase() === 'walk-in customer') {
         const elements = document.querySelectorAll('h1, h2, h3, h4, span, div, p, td, label');
         for (let el of Array.from(elements)) {
@@ -76,17 +74,15 @@ export function printBill(order: any, storeInfo: any) {
       }
     }
 
-    // Static Defaults Validation
     if (!customerName || customerName.toLowerCase() === 'customer') customerName = 'Walk-in Customer';
     if (!customerPhone || customerPhone === 'N/A') customerPhone = '9517498557';
     if (!orderNumber) orderNumber = 'DI-' + String(Math.floor(Math.random() * 90000) + 10000);
     if (!String(orderNumber).startsWith('DI-')) orderNumber = 'DI-' + String(orderNumber).replace(/^[A-Za-z-]+/, '').padStart(5, '0');
 
-    // 3. SEAMLESS DYNAMIC ROW & EXACT PARTICULAR AMOUNT PARSER
+    // 2. ITEM DETAILS PARSER
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
-    
-    // Check state items context first
     const stateItems = target.items || target.garments || [];
+    
     if (stateItems.length > 0) {
       stateItems.forEach((item: any) => {
         detectedItems.push({
@@ -98,7 +94,6 @@ export function printBill(order: any, storeInfo: any) {
       });
     }
 
-    // DOM Scraping fallback with absolute column level price integrity check
     if (typeof document !== 'undefined') {
       const rows = document.querySelectorAll('table tr, .item-row, .cart-item, tr');
       let domItems: Array<{name: string, service: string, qty: number, price: number}> = [];
@@ -113,13 +108,11 @@ export function printBill(order: any, storeInfo: any) {
           if (nameCand && isNaN(Number(nameCand)) && !['sr', 'no', 'item', 'action', 'price', 'qty', 'service', 'delete'].some(w => nameCand.toLowerCase().includes(w))) {
             
             let rowPrice = 0;
-            // Iterate from end of columns to catch the raw individual row amount cell accurately
             for (let i = cells.length - 1; i >= 1; i--) {
               const cellText = (cells[i].innerText || '').trim();
               const numMatch = cellText.match(/(\d+(?:\.\d+)?)/);
               if (numMatch) {
                 const parsedVal = Number(numMatch[1]);
-                // If it isn't identical to global totals (prevents multiplication duplication mapping bugs)
                 if (parsedVal > 0) {
                   rowPrice = parsedVal;
                   break;
@@ -142,7 +135,6 @@ export function printBill(order: any, storeInfo: any) {
         }
       });
 
-      // Prefer DOM data if prices are correctly parsed row by row rather than evaluating blank defaults
       if (domItems.length > 0 && domItems.reduce((s, i) => s + i.price, 0) > 0) {
         detectedItems = domItems;
       } else if (detectedItems.length === 0 && domItems.length > 0) {
@@ -156,7 +148,6 @@ export function printBill(order: any, storeInfo: any) {
 
     const totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
 
-    // Global balance and pricing validations
     if (grossAmount === 0 && typeof document !== 'undefined') {
       const allText = document.body.innerText || '';
       const grossMatch = allText.match(/(?:Gross|Total|Amount)\s*(?::|₹|\$)?\s*(\d+(?:\.\d+)?)/i);
@@ -167,7 +158,8 @@ export function printBill(order: any, storeInfo: any) {
     if (parsedSum > 0) {
       grossAmount = parsedSum;
     }
-    balance = grossAmount - advance;
+    
+    balance = grossAmount - advance; // Correctly assigned here without breaking
 
     let rowsHtml = '';
     detectedItems.forEach((item) => {
@@ -260,4 +252,4 @@ export function sendWhatsAppNotification(order: any, customerPhone: string, enco
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   try { window.open("https://web.whatsapp.com/send?phone=" + customerPhone + "&text=" + encodedMessage, '_blank'); } catch (e) {}
 }
-// permanent-one-shot-fix-v7: 100200
+// reference-balance-error-fixed-v8: 556677
