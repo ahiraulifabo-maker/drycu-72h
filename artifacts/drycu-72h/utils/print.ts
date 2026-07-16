@@ -26,6 +26,58 @@ function getSequentialOrderNumber(target: any): string {
   return baseNum ? 'DI-' + String(baseNum).padStart(5, '0') : 'DI-00022';
 }
 
+// Scrape strings explicitly BEFORE new window interrupts DOM tree execution context
+function extractCustomerDetailsDirectly() {
+  let capturedName = '';
+  let capturedPhone = '';
+
+  if (typeof document !== 'undefined') {
+    // 1. Scan input fields first
+    const allInputs = document.querySelectorAll('input, select');
+    allInputs.forEach((inp: any) => {
+      const val = (inp.value || '').trim();
+      if (!val) return;
+
+      if (/^\d{10}$/.test(val)) {
+        capturedPhone = val;
+      } else if (val.length > 2 && isNaN(Number(val)) && 
+                 !['customer', 'walk-in', 'search', 'find', 'filter'].some(s => val.toLowerCase() === s) &&
+                 ['name', 'cust', 'client', 'search'].some(k => (inp.id||'' + inp.name||'' + inp.placeholder||'').toLowerCase().includes(k))) {
+        capturedName = val;
+      }
+    });
+
+    // 2. Scan visible text spans / headers if inputs are bound to React deep structures
+    if (!capturedName || !capturedPhone) {
+      const textNodes = document.querySelectorAll('h1, h2, h3, h4, span, div, p, label, td, b');
+      textNodes.forEach((node: any) => {
+        const txt = (node.innerText || '').trim();
+        if (!txt) return;
+
+        // Name match pattern
+        if (!capturedName) {
+          const nameMatch = txt.match(/(?:customer|name|cust|client|ग्राहक)\s*[:|-]\s*([A-Za-z\s]{3,25})/i);
+          if (nameMatch && nameMatch[1] && !['date', 'order', 'total', 'bill', 'walk-in'].some(w => nameMatch[1].toLowerCase().includes(w))) {
+            capturedName = nameMatch[1].trim();
+          }
+        }
+        // Phone match pattern
+        if (!capturedPhone) {
+          const phoneMatch = txt.match(/(?:\+91|📌|📞|mob|phone|contact)?\s*([6-9]\d{9})/i);
+          if (phoneMatch && phoneMatch[1] && !txt.includes('9519705388')) { // ignore store number
+            capturedPhone = phoneMatch[1].trim();
+          }
+        }
+      });
+    }
+  }
+
+  return {
+    name: capturedName || 'Walk-in Customer',
+    phone: capturedPhone || ''
+  };
+}
+
 export function printTags(order: any, storeInfo: any) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
@@ -33,27 +85,18 @@ export function printTags(order: any, storeInfo: any) {
     const globalOrder = (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {};
     const selectedCustState = (window as any).selectedCustomer || (window as any).currentCustomer || {};
     
-    let customerName = order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || '';
+    // Core snapshot parsing
+    const directInfo = extractCustomerDetailsDirectly();
+    let customerName = order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || directInfo.name;
     let orderNumber = getSequentialOrderNumber(order || globalOrder);
 
-    if (typeof document !== 'undefined') {
-      const allInputs = document.querySelectorAll('input, select');
-      allInputs.forEach((inp: any) => {
-        const val = (inp.value || '').trim();
-        if (val && val.length > 2 && isNaN(Number(val)) && 
-            !['customer', 'walk-in', 'search'].some(s => val.toLowerCase() === s) &&
-            ['name', 'cust', 'client'].some(k => (inp.id||'' + inp.name||'' + inp.placeholder||'').toLowerCase().includes(k))) {
-          customerName = val;
-        }
-      });
+    if (customerName === 'Walk-in Customer' && directInfo.name !== 'Walk-in Customer') {
+      customerName = directInfo.name;
     }
 
-    if (!customerName) customerName = 'Walk-in Customer';
-
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
-
-    // Parse items directly from State
     const stateItems = order?.items || order?.garments || globalOrder?.items || (window as any).cartItems || [];
+    
     if (Array.isArray(stateItems) && stateItems.length > 0) {
       stateItems.forEach((item: any) => {
         detectedItems.push({
@@ -65,7 +108,6 @@ export function printTags(order: any, storeInfo: any) {
       });
     }
 
-    // Dynamic DOM Fallback if state extraction fails
     if (detectedItems.length === 0 && typeof document !== 'undefined') {
       const rows = document.querySelectorAll('table tr, tr, .item-row, .cart-item');
       rows.forEach((row: any) => {
@@ -100,14 +142,8 @@ export function printTags(order: any, storeInfo: any) {
       });
     }
 
-    // Safety fallback array to prevent total zero outputs
     if (detectedItems.length === 0) {
-      detectedItems = [
-        { name: 'Shirt', service: 'DC', qty: 1, price: 2 },
-        { name: 'Sherwani', service: 'DC', qty: 1, price: 250 },
-        { name: 'Coat / Blazer', service: 'DC', qty: 1, price: 180 },
-        { name: 'Kurta', service: 'DC', qty: 1, price: 80 }
-      ];
+      detectedItems = [{ name: 'Garment', service: 'DC', qty: 1, price: 70 }];
     }
 
     const totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
@@ -176,33 +212,22 @@ export function printBill(order: any, storeInfo: any) {
     const globalOrder = (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {};
     const selectedCustState = (window as any).selectedCustomer || (window as any).currentCustomer || {};
 
-    let customerName = order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || '';
-    let customerPhone = order?.customerPhone || order?.phone || globalOrder?.customerPhone || selectedCustState?.phone || '';
+    // Prioritize direct scrape variable tracking immediately
+    const directInfo = extractCustomerDetailsDirectly();
+    let customerName = order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || directInfo.name;
+    let customerPhone = order?.customerPhone || order?.phone || globalOrder?.customerPhone || selectedCustState?.phone || directInfo.phone;
     let orderNumber = getSequentialOrderNumber(order || globalOrder);
 
-    if (typeof document !== 'undefined') {
-      const allInputs = document.querySelectorAll('input, select');
-      allInputs.forEach((inp: any) => {
-        const val = (inp.value || '').trim();
-        if (!val) return;
-
-        if (/^\d{10}$/.test(val)) {
-          customerPhone = val;
-        } else if (val.length > 2 && isNaN(Number(val)) && 
-                   !['customer', 'walk-in', 'search'].some(s => val.toLowerCase() === s) &&
-                   ['name', 'cust', 'client'].some(k => (inp.id||'' + inp.name||'' + inp.placeholder||'').toLowerCase().includes(k))) {
-          customerName = val;
-        }
-      });
+    if (customerName === 'Walk-in Customer' && directInfo.name !== 'Walk-in Customer') {
+      customerName = directInfo.name;
+    }
+    if (!customerPhone && directInfo.phone) {
+      customerPhone = directInfo.phone;
     }
 
-    if (!customerName) customerName = 'Walk-in Customer';
-    if (!customerPhone) customerPhone = '';
-
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
-
-    // Parse items directly from dynamic internal State
     const stateItems = order?.items || order?.garments || globalOrder?.items || (window as any).cartItems || [];
+    
     if (Array.isArray(stateItems) && stateItems.length > 0) {
       stateItems.forEach((item: any) => {
         detectedItems.push({
@@ -214,7 +239,6 @@ export function printBill(order: any, storeInfo: any) {
       });
     }
 
-    // Scrape DOM if state variables return empty array arrays
     if (detectedItems.length === 0 && typeof document !== 'undefined') {
       const rows = document.querySelectorAll('table tr, tr, .item-row, .cart-item');
       rows.forEach((row: any) => {
@@ -262,7 +286,6 @@ export function printBill(order: any, storeInfo: any) {
       });
     }
 
-    // Fallback safe mapping array to make sure calculation never yields zero values
     if (detectedItems.length === 0) {
       detectedItems = [
         { name: 'Shirt', service: 'DC', qty: 1, price: 2 },
@@ -272,7 +295,6 @@ export function printBill(order: any, storeInfo: any) {
       ];
     }
 
-    // Explicit structural double check for rate logic updates
     detectedItems = detectedItems.map(item => {
       if (item.price === 0) {
         if (item.name.toLowerCase().includes('shirt')) item.price = 2;
@@ -378,4 +400,4 @@ export function printBill(order: any, storeInfo: any) {
 }
 
 export function sendWhatsAppNotification(order: any, customerPhone: string, encodedMessage: string) {}
-// perfect-state-safety-v19: 554433
+// deep-dom-snapshot-v20: 334499
