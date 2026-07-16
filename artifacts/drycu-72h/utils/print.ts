@@ -4,9 +4,12 @@ const SERVICE_ABBR: Record<string, string> = {
   'Dry Cleaning': 'DC',
   'Laundry': 'LD',
   'Ironing': 'IR',
+  'Top Up': 'TP',
+  'Topup': 'TP',
   'DC': 'DC',
   'LD': 'LD',
-  'IR': 'IR'
+  'IR': 'IR',
+  'TP': 'TP'
 };
 
 export function printTags(order: any, storeInfo: any) {
@@ -85,9 +88,15 @@ export function printBill(order: any, storeInfo: any) {
             const priceMatch = txt.match(/(?:₹|\$)?\s*(\d+(?:\.\d+)?)/);
             const rPrice = priceMatch ? Number(priceMatch[1]) : 0;
             
+            // Service check including Top Up
+            let svc = 'DC';
+            if (txt.toLowerCase().includes('laundry')) svc = 'LD';
+            else if (txt.toLowerCase().includes('iron')) svc = 'IR';
+            else if (txt.toLowerCase().includes('top up') || txt.toLowerCase().includes('topup')) svc = 'TP';
+
             detectedItems.push({
               name: nameCand,
-              service: txt.includes('Laundry') ? 'LD' : txt.includes('Iron') ? 'IR' : 'DC',
+              service: svc,
               qty: 1,
               price: rPrice
             });
@@ -231,4 +240,4 @@ export function sendWhatsAppNotification(order: any, customerPhone: string, enco
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   try { window.open("https://web.whatsapp.com/send?phone=" + customerPhone + "&text=" + encodedMessage, '_blank'); } catch (e) {}
 }
-// full-integrity-verified: 991822
+// feature-topup-added-successfully: 711029
