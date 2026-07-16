@@ -30,109 +30,12 @@ export function printBill(order: any, storeInfo: any) {
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
 
     // ==========================================
-    // 🧠 AGGRESSIVE VISUAL DOM READER (EXTRACTION CORES)
-    // ==========================================
-    if (typeof document !== 'undefined') {
-      const allText = document.body.innerText || '';
-
-      // 1. Scan Phone Number from Global Screen Text
-      const phoneMatch = allText.match(/[6-9]\d{9}/);
-      if (phoneMatch) customerPhone = phoneMatch[0];
-
-      // 2. Scan Invoice Order ID from Screen
-      const orderMatch = allText.match(/DI-\d+/i);
-      if (orderMatch) orderNumber = orderMatch[0].toUpperCase();
-
-      // 3. Deep Scan Inputs & Textareas for Fields
-      const inputs = document.querySelectorAll('input, select, textarea');
-      inputs.forEach((inp: any) => {
-        const val = inp.value ? inp.value.trim() : '';
-        if (!val) return;
-
-        // Mobile match inside input fields
-        if (/^\d{10}$/.test(val)) {
-          customerPhone = val;
-          return;
-        }
-
-        // Broad identifier lookup for Name fields
-        const idStr = (inp.id || '').toLowerCase();
-        const nameStr = (inp.name || '').toLowerCase();
-        const placeholder = (inp.placeholder || '').toLowerCase();
-        const parentHtml = inp.parentElement ? inp.parentElement.innerText.toLowerCase() : '';
-
-        if (
-          idStr.includes('name') || nameStr.includes('name') || placeholder.includes('name') ||
-          idStr.includes('cust') || nameStr.includes('cust') || placeholder.includes('cust') ||
-          parentHtml.includes('name') || parentHtml.includes('customer')
-        ) {
-          if (isNaN(Number(val)) && val.length > 2 && val.length < 30) {
-            customerName = val;
-          }
-        }
-      });
-
-      // 4. Label & Heading Scraper Fallback for Name & Phone
-      if (customerName === 'Customer' || customerPhone === 'N/A') {
-        const textElements = document.querySelectorAll('h1, h2, h3, h4, h5, p, span, div, td, label');
-        for (let el of Array.from(textElements)) {
-          const txt = (el as HTMLElement).innerText || '';
-          
-          if (customerName === 'Customer' && /^(customer|name|cust|client)\s*:\s*/i.test(txt)) {
-            const cleaned = txt.replace(/^(customer|name|cust|client)\s*:\s*/i, '').trim();
-            if (cleaned && cleaned.length > 2 && cleaned.length < 25 && !cleaned.toLowerCase().includes('pm')) {
-              customerName = cleaned;
-            }
-          }
-          if (customerPhone === 'N/A') {
-            const m = txt.match(/[6-9]\d{9}/);
-            if (m) customerPhone = m[0];
-          }
-        }
-      }
-
-      // 5. Advanced Item Details & Particular Amount Collector
-      const rows = document.querySelectorAll('table tr, .item-row, .cart-item, tr, div[class*="item"]');
-      rows.forEach((row: any) => {
-        const txt = row.innerText || '';
-        // Skip total/summary blocks
-        if (txt.includes('Total') || txt.includes('Subtotal') || txt.includes('Tax') || txt.trim().length < 4) return;
-
-        const cells = row.querySelectorAll('td, span, div');
-        if (cells.length >= 2) {
-          const nameCand = cells[0].innerText ? cells[0].innerText.trim() : '';
-          
-          // Verify it's a valid row descriptor rather than structural labels
-          if (nameCand && isNaN(Number(nameCand)) && nameCand.length > 1 && !['sr', 'no', 'item', 'action', 'service', 'price', 'qty'].some(w => nameCand.toLowerCase().includes(w))) {
-            
-            // Extract the amount/price for this specific item row
-            const priceMatch = txt.match(/(?:₹|\$)?\s*(\d+(?:\.\d+)?)/);
-            const rPrice = priceMatch ? Number(priceMatch[1]) : 0;
-            
-            let svc = 'DC';
-            if (txt.toLowerCase().includes('laundry')) svc = 'LD';
-            else if (txt.toLowerCase().includes('iron')) svc = 'IR';
-            else if (txt.toLowerCase().includes('top up') || txt.toLowerCase().includes('topup')) svc = 'TP';
-
-            detectedItems.push({
-              name: nameCand.split('\n')[0], // Take first line if nested
-              service: svc,
-              qty: 1,
-              price: rPrice
-            });
-          }
-        }
-      });
-    }
-
-    // ==========================================
-    // 🧮 SYSTEM STATE DATA BACKUP FALLBACK
+    // 🧮 1. DIRECT DATA OBJECT LOOKUP (HIGHEST PRIORITY)
     // ==========================================
     const targetOrder = order || (window as any).currentOrder || (window as any).activeOrder;
     if (targetOrder) {
-      grossAmount = Number(targetOrder.totalAmount || targetOrder.grossAmount || targetOrder.amount || grossAmount);
-      advance = Number(targetOrder.advanceAmount || targetOrder.advancePaid || advance);
-      balance = grossAmount - advance;
+      grossAmount = Number(targetOrder.totalAmount || targetOrder.grossAmount || targetOrder.amount || 0);
+      advance = Number(targetOrder.advanceAmount || targetOrder.advancePaid || 0);
       
       if (targetOrder.id || targetOrder.orderNumber) {
         const cleanId = String(targetOrder.id || targetOrder.orderNumber).replace(/^[A-Za-z-]+/, '');
@@ -147,27 +50,115 @@ export function printBill(order: any, storeInfo: any) {
       }
 
       const stateItems = targetOrder.items || targetOrder.garments || [];
-      if (stateItems.length > 0 && detectedItems.length === 0) {
+      if (stateItems.length > 0) {
         stateItems.forEach((item: any) => {
           detectedItems.push({
             name: item.name || item.itemName || 'Garment',
             service: SERVICE_ABBR[item.service] || item.service || 'DC',
-            qty: item.qty || item.quantity || 1,
+            qty: Number(item.qty || item.quantity || 1),
             price: Number(item.price || item.rate || 0)
           });
         });
       }
     }
 
+    // ==========================================
+    // 🧠 2. AGGRESSIVE DOM FALLBACK (IF OBJECT IS EMPTY)
+    // ==========================================
+    if (typeof document !== 'undefined') {
+      const allText = document.body.innerText || '';
+
+      // Fallback phone extraction if missing
+      if (customerPhone === 'N/A' || !customerPhone) {
+        const phoneMatch = allText.match(/[6-9]\d{9}/);
+        if (phoneMatch) customerPhone = phoneMatch[0];
+      }
+
+      // Dynamic Input Field Extraction
+      const inputs = document.querySelectorAll('input, select, textarea');
+      inputs.forEach((inp: any) => {
+        const val = inp.value ? inp.value.trim() : '';
+        if (!val) return;
+
+        if (/^\d{10}$/.test(val) && (customerPhone === 'N/A' || !customerPhone)) {
+          customerPhone = val;
+        }
+
+        const idStr = (inp.id || '').toLowerCase();
+        const nameStr = (inp.name || '').toLowerCase();
+        const placeholder = (inp.placeholder || '').toLowerCase();
+        const parentHtml = inp.parentElement ? inp.parentElement.innerText.toLowerCase() : '';
+
+        if (customerName === 'Customer' || !customerName) {
+          if (idStr.includes('name') || nameStr.includes('name') || placeholder.includes('name') || parentHtml.includes('name')) {
+            if (isNaN(Number(val)) && val.length > 2) {
+              customerName = val;
+            }
+          }
+        }
+      });
+
+      // Precise Row Column Scraper for Particular Amount Fix
+      if (detectedItems.length === 0) {
+        const rows = document.querySelectorAll('table tr, .item-row, .cart-item');
+        rows.forEach((row: any) => {
+          const txt = row.innerText || '';
+          if (txt.includes('Total') || txt.includes('Gross') || txt.includes('Balance') || txt.trim().length < 4) return;
+
+          const cells = row.querySelectorAll('td, span, div');
+          if (cells.length >= 2) {
+            const nameCand = cells[0].innerText ? cells[0].innerText.trim() : '';
+            if (nameCand && isNaN(Number(nameCand)) && !['sr', 'no', 'item', 'action', 'price'].some(w => nameCand.toLowerCase().includes(w))) {
+              
+              // Extract prices cleanly from the last columns instead of first match of the whole row text
+              let rowPrice = 0;
+              for (let i = cells.length - 1; i >= 1; i--) {
+                const cellTxt = cells[i].innerText || '';
+                const match = cellTxt.match(/(\d+(?:\.\d+)?)/);
+                if (match) {
+                  rowPrice = Number(match[1]);
+                  break;
+                }
+              }
+
+              let svc = 'DC';
+              if (txt.toLowerCase().includes('laundry')) svc = 'LD';
+              else if (txt.toLowerCase().includes('iron')) svc = 'IR';
+              else if (txt.toLowerCase().includes('top up') || txt.toLowerCase().includes('topup')) svc = 'TP';
+
+              detectedItems.push({
+                name: nameCand.split('\n')[0],
+                service: svc,
+                qty: 1,
+                price: rowPrice
+              });
+            }
+          }
+        });
+      }
+
+      // Financial Extraction from DOM if still 0
+      if (grossAmount === 0) {
+        const grossMatch = allText.match(/(?:Gross|Total|Amount)\s*(?::|₹|\$)?\s*(\d+(?:\.\d+)?)/i);
+        if (grossMatch) grossAmount = Number(grossMatch[1]);
+        
+        const advMatch = allText.match(/(?:Advance|Paid)\s*(?::|₹|\$)?\s*(\d+(?:\.\d+)?)/i);
+        if (advMatch) advance = Number(advMatch[1]);
+      }
+    }
+
+    // Standard structural fail-safes
     if (detectedItems.length === 0) {
       detectedItems = [{ name: 'Garment Processing', service: 'DC', qty: 1, price: grossAmount || 0 }];
     }
 
     const totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
+    
+    // If individual item prices parsed properly but gross was missing
     if (grossAmount === 0) {
       grossAmount = detectedItems.reduce((acc, curr) => acc + (curr.price * curr.qty), 0);
-      balance = grossAmount - advance;
     }
+    balance = grossAmount - advance;
 
     let rowsHtml = '';
     detectedItems.forEach((item) => {
@@ -177,7 +168,7 @@ export function printBill(order: any, storeInfo: any) {
             • ${item.name} [${item.service}] x ${item.qty}
           </td>
           <td style="padding: 4px 0; text-align: right; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important;">
-            ₹${(item.price * item.qty).toFixed(2)}
+            ₹${item.price.toFixed(2)}
           </td>
         </tr>
       `;
@@ -260,4 +251,4 @@ export function sendWhatsAppNotification(order: any, customerPhone: string, enco
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   try { window.open("https://web.whatsapp.com/send?phone=" + customerPhone + "&text=" + encodedMessage, '_blank'); } catch (e) {}
 }
-// global-scraper-updated: 818292
+// core-column-prices-fixed-v4: 882012
