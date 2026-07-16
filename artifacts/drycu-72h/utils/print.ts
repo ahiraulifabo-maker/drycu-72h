@@ -7,7 +7,127 @@ const SERVICE_ABBR: Record<string, string> = {
 
 export function printTags(order: any, storeInfo: any) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-  // Tags print logic goes here if needed
+
+  try {
+    const target = order || (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {};
+    
+    let customerName = target.customerName || target.customerDetails?.name || target.name || '';
+    let customerPhone = target.customerPhone || target.customerDetails?.phone || target.phone || '';
+    let orderNumber = target.orderNumber || target.id || '';
+    
+    if (typeof document !== 'undefined') {
+      const allText = document.body.innerText || '';
+      if (!customerName || customerName.toLowerCase() === 'customer' || customerName.toLowerCase() === 'walk-in customer') {
+        const match = allText.match(/(?:customer|name|cust|client|ग्राहक)\s*[:|-]\s*([A-Za-z\s]{3,25})/i);
+        if (match && match[1]) customerName = match[1].trim();
+      }
+      if (!customerPhone || customerPhone === 'N/A') {
+        const phoneMatch = allText.match(/[6-9]\d{9}/);
+        if (phoneMatch) customerPhone = phoneMatch[0];
+      }
+    }
+
+    if (!customerName || customerName.toLowerCase() === 'customer') customerName = 'Walk-in Customer';
+    if (!orderNumber) orderNumber = 'DI-' + String(Math.floor(Math.random() * 90000) + 10000);
+    if (!String(orderNumber).startsWith('DI-')) orderNumber = 'DI-' + String(orderNumber).replace(/^[A-Za-z-]+/, '').padStart(5, '0');
+
+    let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
+    const stateItems = target.items || target.garments || [];
+    
+    if (stateItems.length > 0) {
+      stateItems.forEach((item: any) => {
+        detectedItems.push({
+          name: item.name || item.itemName || 'Garment',
+          service: SERVICE_ABBR[item.service] || item.service || 'DC',
+          qty: Number(item.qty || item.quantity || 1),
+          price: Number(item.price || item.rate || 0)
+        });
+      });
+    }
+
+    if (typeof document !== 'undefined' && detectedItems.length === 0) {
+      const rows = document.querySelectorAll('table tr, .item-row, .cart-item, tr');
+      rows.forEach((row: any) => {
+        const txt = (row.innerText || '').trim();
+        if (!txt || txt.includes('Total') || txt.includes('Gross') || txt.includes('Balance') || txt.length < 4) return;
+
+        const cells = row.querySelectorAll('td, span, div');
+        if (cells.length >= 2) {
+          const nameCand = cells[0].innerText ? cells[0].innerText.trim() : '';
+          if (nameCand && isNaN(Number(nameCand)) && !['sr', 'no', 'item', 'action', 'price', 'qty', 'service', 'delete'].some(w => nameCand.toLowerCase().includes(w))) {
+            let svc = 'DC';
+            if (txt.toLowerCase().includes('laundry')) svc = 'LD';
+            else if (txt.toLowerCase().includes('iron')) svc = 'IR';
+            else if (txt.toLowerCase().includes('top up') || txt.toLowerCase().includes('topup')) svc = 'TP';
+            
+            detectedItems.push({ name: nameCand.split('\n')[0], service: svc, qty: 1, price: 0 });
+          }
+        }
+      });
+    }
+
+    if (detectedItems.length === 0) {
+      detectedItems = [{ name: 'Saree', service: 'DC', qty: 1, price: 0 }];
+    }
+
+    const totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
+    const bookedDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }).replace(/ /g, ' ');
+
+    let tagsHtml = '';
+    let currentPieceIndex = 1;
+
+    detectedItems.forEach((item) => {
+      for (let i = 0; i < item.qty; i++) {
+        tagsHtml += `
+          <div class="tag-wrapper">
+            <div class="order-id">${orderNumber}</div>
+            <div class="cust-title">${customerName}</div>
+            <div class="svc-row">
+              <span class="svc-code">${item.service}</span>
+              <span class="counter-ratio">${currentPieceIndex}/${totalPcs}</span>
+            </div>
+            <div class="info-row">Ready: </div>
+            <div class="info-row">Item: ${item.name}</div>
+            <div class="info-row">Booked: ${bookedDateStr}</div>
+            <div class="dashed-separator">-------------------------</div>
+          </div>
+        `;
+        currentPieceIndex++;
+      }
+    });
+
+    const html = `
+      <html>
+      <head>
+        <title>DRYCU-72H Tags</title>
+        <style>
+          @page { size: 58mm auto; margin: 0; }
+          * { box-sizing: border-box; font-weight: 900 !important; color: #000 !important; margin: 0; padding: 0; }
+          body { font-family: 'Courier New', Courier, monospace; width: 54mm; padding: 4px 2px; background-color: #fff; }
+          .tag-wrapper { width: 100%; text-align: left; padding: 2px 0; page-break-inside: avoid; display: block; }
+          .order-id { font-size: 20px; font-weight: 900; line-height: 1.1; margin-bottom: 2px; }
+          .cust-title { font-size: 14px; font-weight: 900; line-height: 1.2; margin-bottom: 3px; }
+          .svc-row { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 900; margin-bottom: 3px; width: 85%; }
+          .info-row { font-size: 12px; font-weight: 900; line-height: 1.3; margin-bottom: 1px; }
+          .dashed-separator { font-size: 11px; font-weight: 900; white-space: nowrap; margin-top: 4px; margin-bottom: 6px; }
+        </style>
+      </head>
+      <body>
+        ${tagsHtml}
+      </body>
+      </html>
+    `;
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => { win.print(); win.close(); }, 400);
+    }
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 export function printBill(order: any, storeInfo: any) {
@@ -21,9 +141,8 @@ export function printBill(order: any, storeInfo: any) {
     let grossAmount = Number(target.totalAmount || target.grossAmount || target.amount || 0);
     let advance = Number(target.advanceAmount || target.advancePaid || target.advance || 0);
     let orderNumber = target.orderNumber || target.id || '';
-    let balance = 0; // Fixed: Declared upfront globally inside the try block
+    let balance = 0;
 
-    // 1. DOM SCRAPER FOR INPUT FIELDS & DYNAMIC LABELS
     if (typeof document !== 'undefined') {
       const allText = document.body.innerText || '';
 
@@ -79,7 +198,6 @@ export function printBill(order: any, storeInfo: any) {
     if (!orderNumber) orderNumber = 'DI-' + String(Math.floor(Math.random() * 90000) + 10000);
     if (!String(orderNumber).startsWith('DI-')) orderNumber = 'DI-' + String(orderNumber).replace(/^[A-Za-z-]+/, '').padStart(5, '0');
 
-    // 2. ITEM DETAILS PARSER
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
     const stateItems = target.items || target.garments || [];
     
@@ -159,7 +277,7 @@ export function printBill(order: any, storeInfo: any) {
       grossAmount = parsedSum;
     }
     
-    balance = grossAmount - advance; // Correctly assigned here without breaking
+    balance = grossAmount - advance;
 
     let rowsHtml = '';
     detectedItems.forEach((item) => {
@@ -252,4 +370,4 @@ export function sendWhatsAppNotification(order: any, customerPhone: string, enco
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   try { window.open("https://web.whatsapp.com/send?phone=" + customerPhone + "&text=" + encodedMessage, '_blank'); } catch (e) {}
 }
-// reference-balance-error-fixed-v8: 556677
+// final-layout-forced-update-v11: 778899
