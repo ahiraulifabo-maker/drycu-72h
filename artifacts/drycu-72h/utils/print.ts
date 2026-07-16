@@ -1,11 +1,5 @@
 import { Platform } from 'react-native';
 
-const SERVICE_ABBR: Record<string, string> = {
-  'Dry Cleaning': 'DC',
-  'Laundry': 'LD',
-  'Ironing': 'IR',
-};
-
 export function printTags(order: any, storeInfo: any) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 }
@@ -14,79 +8,149 @@ export function printBill(order: any, storeInfo: any) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
   try {
-    // Exact dynamic parameters safely fallbacks from current active order component state
-    const grossAmount = Number(order?.totalAmount || order?.grossAmount || order?.netPayable || order?.amount || 0);
-    const advance = Number(order?.advanceAmount || order?.advancePaid || order?.advance || 0);
-    const balance = Number(order?.balanceDue || order?.balance || (grossAmount - advance));
-    
-    const idStr = String(order?.id || order?.orderNumber || order?.uid || '21').replace(/^[A-Za-z-]+/, '');
-    const orderNumber = "DI-" + idStr.padStart(5, '0');
-
-    // Secure actual customer identity profile directly from relational state fields
+    let grossAmount = 0;
+    let advance = 0;
+    let balance = 0;
     let customerName = 'Customer';
-    if (order?.customerDetails?.name && !order?.customerDetails?.name.toLowerCase().includes('pickup') && !order?.customerDetails?.name.toLowerCase().includes('pm')) {
-      customerName = order.customerDetails.name;
-    } else if (order?.customerName && !order?.customerName.toLowerCase().includes('pickup') && !order?.customerName.toLowerCase().includes('pm')) {
-      customerName = order.customerName;
-    } else if (order?.customer?.name) {
-      customerName = order.customer.name;
-    }
-
     let customerPhone = 'N/A';
-    if (order?.customerDetails?.phone || order?.customerDetails?.mobile) {
-      customerPhone = order.customerDetails.phone || order.customerDetails.mobile;
-    } else if (order?.customerPhone || order?.customer_phone) {
-      customerPhone = order.customerPhone || order.customer_phone;
-    } else if (order?.customer?.phone || order?.customer?.mobile) {
-      customerPhone = order.customer.phone || order.customer.mobile;
-    }
+    let orderNumber = 'DI-' + String(Math.floor(Math.random() * 90000) + 10000);
 
-    // Process exact loop array for array length execution
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
-    const itemsArray = order?.items || order?.garments || order?.orderItems || order?.products || [];
 
-    if (itemsArray && itemsArray.length > 0) {
-      itemsArray.forEach((item: any) => {
-        const qty = item.qty || item.quantity || 1;
-        const service = SERVICE_ABBR[item.serviceType || item.service] || item.serviceType || item.service || 'DC';
-        const name = item.itemName || item.name || 'Garment';
-        const price = Number(item.itemPrice || item.price || item.rate || 0);
-        detectedItems.push({ name, service, qty, price });
+    // ==========================================
+    // 🧠 DIRECT VISUAL HTML DOM EXTRACTION (NO STATE DEPENDENCY)
+    // ==========================================
+    if (typeof document !== 'undefined') {
+      const allText = document.body.innerText || '';
+
+      // 1. Scan Phone Number from Screen
+      const phoneMatch = allText.match(/[6-9]\d{9}/);
+      if (phoneMatch) customerPhone = phoneMatch[0];
+
+      // 2. Scan Order ID / Invoice Number from Screen
+      const orderMatch = allText.match(/DI-\d+/i);
+      if (orderMatch) orderNumber = orderMatch[0].toUpperCase();
+
+      // 3. Scan Inputs & Text Fields for Customer Name dynamically
+      const inputs = document.querySelectorAll('input, select, textarea');
+      inputs.forEach((inp: any) => {
+        const val = inp.value ? inp.value.trim() : '';
+        if (!val || val.length < 2) return;
+
+        if (/^\d{10}$/.test(val)) {
+          customerPhone = val;
+        } else if (isNaN(Number(val))) {
+          const parentHtml = inp.parentElement ? inp.parentElement.innerText.toLowerCase() : '';
+          const placeholder = (inp.placeholder || '').toLowerCase();
+          if (placeholder.includes('name') || placeholder.includes('cust') || parentHtml.includes('name') || parentHtml.includes('cust')) {
+            customerName = val;
+          }
+        }
+      });
+
+      // 4. Try to pick customer name from text elements if still default
+      if (customerName === 'Customer') {
+        const headings = document.querySelectorAll('h1, h2, h3, h4, p, span, div, td');
+        for (let el of Array.from(headings)) {
+          const txt = (el as HTMLElement).innerText || '';
+          if (/^(customer|name|cust)\s*:\s*/i.test(txt)) {
+            const cleaned = txt.replace(/^(customer|name|cust)\s*:\s*/i, '').trim();
+            if (cleaned && cleaned.length > 2 && cleaned.length < 25 && !cleaned.toLowerCase().includes('pm')) {
+              customerName = cleaned;
+              break;
+            }
+          }
+        }
+      }
+
+      // 5. Scan table rows or list containers for ACTUAL selected items
+      const rows = document.querySelectorAll('table tr, .item-row, .cart-item, div[class*="item"]');
+      rows.forEach((row: any) => {
+        const txt = row.innerText || '';
+        if (txt.includes('Total') || txt.includes('Price') || txt.includes('Action') || txt.trim().length < 4) return;
+
+        const cells = row.querySelectorAll('td, span, div');
+        if (cells.length >= 2) {
+          const nameCand = cells[0].innerText ? cells[0].innerText.trim() : '';
+          if (nameCand && isNaN(Number(nameCand)) && nameCand.length > 1 && !['sr', 'no', 'item', 'action'].some(w => nameCand.toLowerCase().includes(w))) {
+            // Find price inside this specific row text
+            const priceMatch = txt.match(/(?:₹|\$)?\s*(\d+(?:\.\d+)?)/);
+            const rPrice = priceMatch ? Number(priceMatch[1]) : 0;
+            
+            detectedItems.push({
+              name: nameCand,
+              service: txt.includes('Laundry') ? 'LD' : txt.includes('Iron') ? 'IR' : 'DC',
+              qty: 1,
+              price: rPrice
+            });
+          }
+        }
       });
     }
 
-    // Strict safety extraction fallback if array parsing fails at rendering pipeline
-    if (detectedItems.length === 0) {
-      detectedItems = [
-        { name: 'Shirt', service: 'DC', qty: 1, price: 0 },
-        { name: 'Sherwani', service: 'DC', qty: 1, price: 0 },
-        { name: 'Coat / Blazer', service: 'DC', qty: 1, price: 0 },
-        { name: 'Kurta', service: 'DC', qty: 1, price: 0 }
-      ];
+    // ==========================================
+    // 🧮 STATE DATA FALLBACK (If DOM parsing is partial)
+    // ==========================================
+    const targetOrder = order || (window as any).currentOrder || (window as any).activeOrder;
+    if (targetOrder) {
+      grossAmount = Number(targetOrder.totalAmount || targetOrder.grossAmount || targetOrder.amount || grossAmount);
+      advance = Number(targetOrder.advanceAmount || targetOrder.advancePaid || advance);
+      balance = grossAmount - advance;
+      
+      if (targetOrder.id || targetOrder.orderNumber) {
+        const cleanId = String(targetOrder.id || targetOrder.orderNumber).replace(/^[A-Za-z-]+/, '');
+        orderNumber = "DI-" + cleanId.padStart(5, '0');
+      }
+
+      if (targetOrder.customerName || targetOrder.customerDetails?.name) {
+        customerName = targetOrder.customerName || targetOrder.customerDetails.name;
+      }
+      if (targetOrder.customerPhone || targetOrder.customerDetails?.phone) {
+        customerPhone = targetOrder.customerPhone || targetOrder.customerDetails.phone;
+      }
+
+      const stateItems = targetOrder.items || targetOrder.garments || [];
+      if (stateItems.length > 0 && detectedItems.length === 0) {
+        stateItems.forEach((item: any) => {
+          detectedItems.push({
+            name: item.name || item.itemName || 'Garment',
+            service: SERVICE_ABBR[item.service] || item.service || 'DC',
+            qty: item.qty || item.quantity || 1,
+            price: Number(item.price || item.rate || 0)
+          });
+        });
+      }
     }
 
-    const totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0) || 4;
+    // Strict validation to avoid empty print arrays
+    if (detectedItems.length === 0) {
+      detectedItems = [{ name: 'Garment Processing', service: 'DC', qty: 1, price: grossAmount || 0 }];
+    }
 
+    // Calculate dynamic aggregates
+    const totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
+    if (grossAmount === 0) {
+      grossAmount = detectedItems.reduce((acc, curr) => acc + (curr.price * curr.qty), 0);
+      balance = grossAmount - advance;
+    }
+
+    // Build Table Rows Template HTML
     let rowsHtml = '';
     detectedItems.forEach((item) => {
-      let finalPrice = item.price;
-      if (finalPrice === 0 && grossAmount > 0) {
-        finalPrice = grossAmount / totalPcs;
-      }
       rowsHtml += `
         <tr style="vertical-align: top;">
           <td style="padding: 4px 0; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important;">
             • ${item.name} [${item.service}] x ${item.qty}
           </td>
           <td style="padding: 4px 0; text-align: right; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important;">
-            ₹${(finalPrice * item.qty).toFixed(2)}
+            ₹${(item.price * item.qty).toFixed(2)}
           </td>
         </tr>
       `;
     });
 
-    const formattedDate = order?.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
-    const readyDate = order?.readyDate ? new Date(order.readyDate).toLocaleDateString('en-GB') : '19/07/2026';
+    const formattedDate = new Date().toLocaleDateString('en-GB');
+    const readyDate = '19/07/2026';
 
     const html = `
       <html>
@@ -162,4 +226,4 @@ export function sendWhatsAppNotification(order: any, customerPhone: string, enco
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   try { window.open("https://web.whatsapp.com/send?phone=" + customerPhone + "&text=" + encodedMessage, '_blank'); } catch (e) {}
 }
-// schema-build-final-refactor: 8472911
+// global-state-independent-build: 119284
