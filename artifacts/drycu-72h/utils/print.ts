@@ -26,45 +26,47 @@ function getSequentialOrderNumber(target: any): string {
   return baseNum ? 'DI-' + String(baseNum).padStart(5, '0') : 'DI-00022';
 }
 
-// Scrape strings explicitly BEFORE new window interrupts DOM tree execution context
 function extractCustomerDetailsDirectly() {
   let capturedName = '';
   let capturedPhone = '';
 
   if (typeof document !== 'undefined') {
-    // 1. Scan input fields first
-    const allInputs = document.querySelectorAll('input, select');
+    const allInputs = document.querySelectorAll('input, select, textarea');
     allInputs.forEach((inp: any) => {
       const val = (inp.value || '').trim();
       if (!val) return;
 
       if (/^\d{10}$/.test(val)) {
         capturedPhone = val;
-      } else if (val.length > 2 && isNaN(Number(val)) && 
-                 !['customer', 'walk-in', 'search', 'find', 'filter'].some(s => val.toLowerCase() === s) &&
-                 ['name', 'cust', 'client', 'search'].some(k => (inp.id||'' + inp.name||'' + inp.placeholder||'').toLowerCase().includes(k))) {
-        capturedName = val;
+      } 
+      else if (val.length >= 2 && isNaN(Number(val))) {
+        const lowerVal = val.toLowerCase();
+        const systemKeywords = ['customer', 'walk-in', 'search', 'find', 'filter', 'dry', 'laundry', 'iron', 'select', 'order', 'ahirauli'];
+        if (!systemKeywords.some(keyword => lowerVal.includes(keyword)) && !capturedName) {
+          capturedName = val;
+        }
       }
     });
 
-    // 2. Scan visible text spans / headers if inputs are bound to React deep structures
     if (!capturedName || !capturedPhone) {
-      const textNodes = document.querySelectorAll('h1, h2, h3, h4, span, div, p, label, td, b');
-      textNodes.forEach((node: any) => {
-        const txt = (node.innerText || '').trim();
+      const textElements = document.querySelectorAll('h1, h2, h3, h4, p, span, div, label, b, td');
+      textElements.forEach((el: any) => {
+        const txt = (el.innerText || '').trim();
         if (!txt) return;
 
-        // Name match pattern
         if (!capturedName) {
-          const nameMatch = txt.match(/(?:customer|name|cust|client|ग्राहक)\s*[:|-]\s*([A-Za-z\s]{3,25})/i);
-          if (nameMatch && nameMatch[1] && !['date', 'order', 'total', 'bill', 'walk-in'].some(w => nameMatch[1].toLowerCase().includes(w))) {
-            capturedName = nameMatch[1].trim();
+          const nameMatch = txt.match(/(?:customer|name|cust|client|customer\s*name|ग्राहक)\s*[:|-]\s*([A-Za-z\s]{2,30})/i);
+          if (nameMatch && nameMatch[1]) {
+            const parsed = nameMatch[1].trim();
+            if (!['date', 'order', 'total', 'bill', 'walk-in', 'customer'].some(w => parsed.toLowerCase().includes(w))) {
+              capturedName = parsed;
+            }
           }
         }
-        // Phone match pattern
+
         if (!capturedPhone) {
           const phoneMatch = txt.match(/(?:\+91|📌|📞|mob|phone|contact)?\s*([6-9]\d{9})/i);
-          if (phoneMatch && phoneMatch[1] && !txt.includes('9519705388')) { // ignore store number
+          if (phoneMatch && phoneMatch[1] && !txt.includes('9519705388')) {
             capturedPhone = phoneMatch[1].trim();
           }
         }
@@ -85,7 +87,6 @@ export function printTags(order: any, storeInfo: any) {
     const globalOrder = (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {};
     const selectedCustState = (window as any).selectedCustomer || (window as any).currentCustomer || {};
     
-    // Core snapshot parsing
     const directInfo = extractCustomerDetailsDirectly();
     let customerName = order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || directInfo.name;
     let orderNumber = getSequentialOrderNumber(order || globalOrder);
@@ -212,7 +213,6 @@ export function printBill(order: any, storeInfo: any) {
     const globalOrder = (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {};
     const selectedCustState = (window as any).selectedCustomer || (window as any).currentCustomer || {};
 
-    // Prioritize direct scrape variable tracking immediately
     const directInfo = extractCustomerDetailsDirectly();
     let customerName = order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || directInfo.name;
     let customerPhone = order?.customerPhone || order?.phone || globalOrder?.customerPhone || selectedCustState?.phone || directInfo.phone;
@@ -377,8 +377,7 @@ export function printBill(order: any, storeInfo: any) {
           • Store not responsible for garments left over 15 days.
         </div>
         <div class="line"></div>
-        <div class="center bold" style="font-size: 9.5px; margin: 4px 0; letter-spacing: 0.2px;">DESIGNED BY LAUNDRY PERSON'S WIFE ⚡</div>
-        <div class="center bold" style="font-size: 10px; margin-bottom: 4px;">⚡ THANK YOU ⚡</div>
+        <div class="center bold" style="font-size: 10px; margin-top: 4px; margin-bottom: 4px;">⚡ THANK YOU ⚡</div>
         <div style="margin-top: 25px; display: flex; justify-content: space-between; font-size: 9.5px;">
           <span style="border-top: 1.5px solid #000; width: 45%; text-align: center; padding-top: 2px;">CUSTOMER</span>
           <span style="border-top: 1.5px solid #000; width: 45%; text-align: center; padding-top: 2px;">SIGNATURE</span>
@@ -400,4 +399,4 @@ export function printBill(order: any, storeInfo: any) {
 }
 
 export function sendWhatsAppNotification(order: any, customerPhone: string, encodedMessage: string) {}
-// deep-dom-snapshot-v20: 334499
+// footer-clean-v22: 112233
