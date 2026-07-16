@@ -104,34 +104,39 @@ export function printTags(order: any, storeInfo: any) {
           name: item.name || item.itemName || 'Garment',
           service: SERVICE_ABBR[item.service] || item.service || 'DC',
           qty: Number(item.qty || item.quantity || 1),
-          price: Number(item.price !== undefined ? item.price : (item.rate || 0))
+          price: Number(item.price !== undefined ? item.price : (item.rate || item.customPrice || 0))
         });
       });
     }
 
     if (detectedItems.length === 0 && typeof document !== 'undefined') {
-      const rows = document.querySelectorAll('table tr, tr, .item-row, .cart-item');
+      const rows = document.querySelectorAll('table tr, tr, .item-row, .cart-item, div[class*="row"], div[class*="item"]');
       rows.forEach((row: any) => {
         const txt = (row.innerText || '').trim();
         if (!txt || ['total', 'gross', 'balance', 'due', 'subtotal', 'item', 'price'].some(w => txt.toLowerCase().includes(w))) return;
 
-        const cells = row.querySelectorAll('td, span, div');
+        const cells = row.querySelectorAll('td, span, div, input');
         if (cells.length >= 2) {
           let nameCand = '';
           let numericalTokens: number[] = [];
 
           cells.forEach((c: any) => {
-            const innerT = (c.innerText || '').trim();
-            if (!innerT) return;
-            if (isNaN(Number(innerT)) && innerT.length > 2 && !['qty', 'rate', 'price', 'service'].some(w => innerT.toLowerCase().includes(w))) {
-              if (!nameCand) nameCand = innerT.split('\n')[0];
+            if (c.tagName === 'INPUT') {
+              const val = Number(c.value);
+              if (!isNaN(val) && val > 0) numericalTokens.push(val);
             } else {
-              const num = Number(innerT.replace(/[^\d\.]/g, ''));
-              if (!isNaN(num) && num > 0) numericalTokens.push(num);
+              const innerT = (c.innerText || '').trim();
+              if (!innerT) return;
+              if (isNaN(Number(innerT)) && innerT.length > 2 && !['qty', 'rate', 'price', 'service'].some(w => innerT.toLowerCase().includes(w))) {
+                if (!nameCand) nameCand = innerT.split('\n')[0];
+              } else {
+                const num = Number(innerT.replace(/[^\d\.]/g, ''));
+                if (!isNaN(num) && num > 0) numericalTokens.push(num);
+              }
             }
           });
 
-          if (nameCand) {
+          if (nameCand && nameCand.length < 30) {
             let qty = numericalTokens.length > 1 ? numericalTokens[0] : 1;
             let svc = 'DC';
             if (txt.toLowerCase().includes('laundry')) svc = 'LD';
@@ -141,10 +146,6 @@ export function printTags(order: any, storeInfo: any) {
           }
         }
       });
-    }
-
-    if (detectedItems.length === 0) {
-      detectedItems = [{ name: 'Garment', service: 'DC', qty: 1, price: 70 }];
     }
 
     const totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
@@ -226,48 +227,49 @@ export function printBill(order: any, storeInfo: any) {
     }
 
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
-    const stateItems = order?.items || order?.garments || globalOrder?.items || (window as any).cartItems || [];
     
+    // 1. Check if structural app state contains current live items
+    const stateItems = order?.items || order?.garments || globalOrder?.items || (window as any).cartItems || [];
     if (Array.isArray(stateItems) && stateItems.length > 0) {
       stateItems.forEach((item: any) => {
         detectedItems.push({
           name: item.name || item.itemName || 'Garment',
           service: SERVICE_ABBR[item.service] || item.service || 'DC',
           qty: Number(item.qty || item.quantity || 1),
-          price: Number(item.price !== undefined ? item.price : (item.rate || 0))
+          price: Number(item.price !== undefined ? item.price : (item.rate || item.customPrice || 0))
         });
       });
     }
 
+    // 2. Direct real-time screen extraction to intercept dynamic input/temporary changes
     if (detectedItems.length === 0 && typeof document !== 'undefined') {
-      const rows = document.querySelectorAll('table tr, tr, .item-row, .cart-item');
+      const rows = document.querySelectorAll('table tr, tr, .item-row, .cart-item, div[class*="row"], div[class*="item"]');
       rows.forEach((row: any) => {
         const txt = (row.innerText || '').trim();
         if (!txt || ['total', 'gross', 'balance', 'due', 'subtotal', 'item', 'price'].some(w => txt.toLowerCase().includes(w))) return;
 
-        const cells = row.querySelectorAll('td, span, div');
+        const cells = row.querySelectorAll('td, span, div, input');
         if (cells.length >= 2) {
           let nameCand = '';
           let numericalTokens: number[] = [];
 
           cells.forEach((c: any) => {
-            const innerT = (c.innerText || '').trim();
-            if (!innerT) return;
-            if (isNaN(Number(innerT)) && innerT.length > 2 && !['qty', 'rate', 'price', 'service'].some(w => innerT.toLowerCase().includes(w))) {
-              if (!nameCand) nameCand = innerT.split('\n')[0];
+            if (c.tagName === 'INPUT') {
+              const val = Number(c.value);
+              if (!isNaN(val) && val > 0) numericalTokens.push(val);
             } else {
-              const num = Number(innerT.replace(/[^\d\.]/g, ''));
-              if (!isNaN(num) && num > 0) numericalTokens.push(num);
+              const innerT = (c.innerText || '').trim();
+              if (!innerT) return;
+              if (isNaN(Number(innerT)) && innerT.length > 2 && !['qty', 'rate', 'price', 'service'].some(w => innerT.toLowerCase().includes(w))) {
+                if (!nameCand) nameCand = innerT.split('\n')[0];
+              } else {
+                const num = Number(innerT.replace(/[^\d\.]/g, ''));
+                if (!isNaN(num) && num > 0) numericalTokens.push(num);
+              }
             }
           });
 
-          const inputs = row.querySelectorAll('input');
-          inputs.forEach((ri: any) => {
-            const val = Number(ri.value);
-            if (!isNaN(val) && val > 0) numericalTokens.push(val);
-          });
-
-          if (nameCand) {
+          if (nameCand && nameCand.length < 30) {
             let detectedPrice = numericalTokens.length > 0 ? numericalTokens[numericalTokens.length - 1] : 0;
             let detectedQty = numericalTokens.length > 1 ? numericalTokens[0] : 1;
             
@@ -286,26 +288,7 @@ export function printBill(order: any, storeInfo: any) {
       });
     }
 
-    if (detectedItems.length === 0) {
-      detectedItems = [
-        { name: 'Shirt', service: 'DC', qty: 1, price: 2 },
-        { name: 'Sherwani', service: 'DC', qty: 1, price: 250 },
-        { name: 'Coat / Blazer', service: 'DC', qty: 1, price: 180 },
-        { name: 'Kurta', service: 'DC', qty: 1, price: 80 }
-      ];
-    }
-
-    detectedItems = detectedItems.map(item => {
-      if (item.price === 0) {
-        if (item.name.toLowerCase().includes('shirt')) item.price = 2;
-        else if (item.name.toLowerCase().includes('sherwani')) item.price = 250;
-        else if (item.name.toLowerCase().includes('coat') || item.name.toLowerCase().includes('blazer')) item.price = 180;
-        else if (item.name.toLowerCase().includes('kurta')) item.price = 80;
-        else item.price = 70;
-      }
-      return item;
-    });
-
+    // REMOVED ALL HARDCODED FALLBACK ARRAYS TO PREVENT CORRUPTING SYSTEM PRICES
     let grossAmount = detectedItems.reduce((acc, curr) => acc + (curr.price * curr.qty), 0);
     let advance = Number(order?.advanceAmount || globalOrder?.advanceAmount || 0);
     let balance = grossAmount - advance;
@@ -399,4 +382,4 @@ export function printBill(order: any, storeInfo: any) {
 }
 
 export function sendWhatsAppNotification(order: any, customerPhone: string, encodedMessage: string) {}
-// footer-clean-v22: 112233
+// real-workflow-v24: 994411
