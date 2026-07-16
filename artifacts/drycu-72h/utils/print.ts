@@ -30,72 +30,92 @@ export function printBill(order: any, storeInfo: any) {
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
 
     // ==========================================
-    // 🧠 DIRECT VISUAL HTML DOM EXTRACTION (NO STATE DEPENDENCY)
+    // 🧠 AGGRESSIVE VISUAL DOM READER (EXTRACTION CORES)
     // ==========================================
     if (typeof document !== 'undefined') {
       const allText = document.body.innerText || '';
 
-      // 1. Scan Phone Number from Screen
+      // 1. Scan Phone Number from Global Screen Text
       const phoneMatch = allText.match(/[6-9]\d{9}/);
       if (phoneMatch) customerPhone = phoneMatch[0];
 
-      // 2. Scan Order ID / Invoice Number from Screen
+      // 2. Scan Invoice Order ID from Screen
       const orderMatch = allText.match(/DI-\d+/i);
       if (orderMatch) orderNumber = orderMatch[0].toUpperCase();
 
-      // 3. Scan Inputs & Text Fields for Customer Name dynamically
+      // 3. Deep Scan Inputs & Textareas for Fields
       const inputs = document.querySelectorAll('input, select, textarea');
       inputs.forEach((inp: any) => {
         const val = inp.value ? inp.value.trim() : '';
-        if (!val || val.length < 2) return;
+        if (!val) return;
 
+        // Mobile match inside input fields
         if (/^\d{10}$/.test(val)) {
           customerPhone = val;
-        } else if (isNaN(Number(val))) {
-          const parentHtml = inp.parentElement ? inp.parentElement.innerText.toLowerCase() : '';
-          const placeholder = (inp.placeholder || '').toLowerCase();
-          if (placeholder.includes('name') || placeholder.includes('cust') || parentHtml.includes('name') || parentHtml.includes('cust')) {
+          return;
+        }
+
+        // Broad identifier lookup for Name fields
+        const idStr = (inp.id || '').toLowerCase();
+        const nameStr = (inp.name || '').toLowerCase();
+        const placeholder = (inp.placeholder || '').toLowerCase();
+        const parentHtml = inp.parentElement ? inp.parentElement.innerText.toLowerCase() : '';
+
+        if (
+          idStr.includes('name') || nameStr.includes('name') || placeholder.includes('name') ||
+          idStr.includes('cust') || nameStr.includes('cust') || placeholder.includes('cust') ||
+          parentHtml.includes('name') || parentHtml.includes('customer')
+        ) {
+          if (isNaN(Number(val)) && val.length > 2 && val.length < 30) {
             customerName = val;
           }
         }
       });
 
-      // 4. Try to pick customer name from text elements if still default
-      if (customerName === 'Customer') {
-        const headings = document.querySelectorAll('h1, h2, h3, h4, p, span, div, td');
-        for (let el of Array.from(headings)) {
+      // 4. Label & Heading Scraper Fallback for Name & Phone
+      if (customerName === 'Customer' || customerPhone === 'N/A') {
+        const textElements = document.querySelectorAll('h1, h2, h3, h4, h5, p, span, div, td, label');
+        for (let el of Array.from(textElements)) {
           const txt = (el as HTMLElement).innerText || '';
-          if (/^(customer|name|cust)\s*:\s*/i.test(txt)) {
-            const cleaned = txt.replace(/^(customer|name|cust)\s*:\s*/i, '').trim();
+          
+          if (customerName === 'Customer' && /^(customer|name|cust|client)\s*:\s*/i.test(txt)) {
+            const cleaned = txt.replace(/^(customer|name|cust|client)\s*:\s*/i, '').trim();
             if (cleaned && cleaned.length > 2 && cleaned.length < 25 && !cleaned.toLowerCase().includes('pm')) {
               customerName = cleaned;
-              break;
             }
+          }
+          if (customerPhone === 'N/A') {
+            const m = txt.match(/[6-9]\d{9}/);
+            if (m) customerPhone = m[0];
           }
         }
       }
 
-      // 5. Scan table rows or list containers for ACTUAL selected items
-      const rows = document.querySelectorAll('table tr, .item-row, .cart-item, div[class*="item"]');
+      // 5. Advanced Item Details & Particular Amount Collector
+      const rows = document.querySelectorAll('table tr, .item-row, .cart-item, tr, div[class*="item"]');
       rows.forEach((row: any) => {
         const txt = row.innerText || '';
-        if (txt.includes('Total') || txt.includes('Price') || txt.includes('Action') || txt.trim().length < 4) return;
+        // Skip total/summary blocks
+        if (txt.includes('Total') || txt.includes('Subtotal') || txt.includes('Tax') || txt.trim().length < 4) return;
 
         const cells = row.querySelectorAll('td, span, div');
         if (cells.length >= 2) {
           const nameCand = cells[0].innerText ? cells[0].innerText.trim() : '';
-          if (nameCand && isNaN(Number(nameCand)) && nameCand.length > 1 && !['sr', 'no', 'item', 'action'].some(w => nameCand.toLowerCase().includes(w))) {
+          
+          // Verify it's a valid row descriptor rather than structural labels
+          if (nameCand && isNaN(Number(nameCand)) && nameCand.length > 1 && !['sr', 'no', 'item', 'action', 'service', 'price', 'qty'].some(w => nameCand.toLowerCase().includes(w))) {
+            
+            // Extract the amount/price for this specific item row
             const priceMatch = txt.match(/(?:₹|\$)?\s*(\d+(?:\.\d+)?)/);
             const rPrice = priceMatch ? Number(priceMatch[1]) : 0;
             
-            // Service check including Top Up
             let svc = 'DC';
             if (txt.toLowerCase().includes('laundry')) svc = 'LD';
             else if (txt.toLowerCase().includes('iron')) svc = 'IR';
             else if (txt.toLowerCase().includes('top up') || txt.toLowerCase().includes('topup')) svc = 'TP';
 
             detectedItems.push({
-              name: nameCand,
+              name: nameCand.split('\n')[0], // Take first line if nested
               service: svc,
               qty: 1,
               price: rPrice
@@ -106,7 +126,7 @@ export function printBill(order: any, storeInfo: any) {
     }
 
     // ==========================================
-    // 🧮 STATE DATA FALLBACK (If DOM parsing is partial)
+    // 🧮 SYSTEM STATE DATA BACKUP FALLBACK
     // ==========================================
     const targetOrder = order || (window as any).currentOrder || (window as any).activeOrder;
     if (targetOrder) {
@@ -240,4 +260,4 @@ export function sendWhatsAppNotification(order: any, customerPhone: string, enco
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   try { window.open("https://web.whatsapp.com/send?phone=" + customerPhone + "&text=" + encodedMessage, '_blank'); } catch (e) {}
 }
-// feature-topup-added-successfully: 711029
+// global-scraper-updated: 818292
