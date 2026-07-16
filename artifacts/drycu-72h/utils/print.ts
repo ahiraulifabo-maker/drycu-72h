@@ -6,21 +6,71 @@ const SERVICE_ABBR: Record<string, string> = {
   Ironing: "IR",
 };
 
-function logOrderObject(order: any) {
-  try {
-    console.log("=== DRYCU-72H INCOMING ORDER OBJECT CONTEXT TRACE ===");
-    console.log(JSON.stringify(order));
-  } catch (e) {
-    console.log("Order trace failed:", order);
+// Helper function to dynamically scan the order object for any customer name or phone string
+function autoScanKey(obj: any, searchType: "name" | "phone"): string | null {
+  if (!obj || typeof obj !== "object") return null;
+
+  // High priority keys
+  if (searchType === "name") {
+    const directName =
+      obj.customerName ||
+      obj.customer_name ||
+      obj.name ||
+      obj.fullName ||
+      obj.customer?.name ||
+      obj.customer?.customerName;
+    if (directName && directName !== "Customer") return String(directName);
+  } else {
+    const directPhone =
+      obj.customerPhone ||
+      obj.customer_phone ||
+      obj.phone ||
+      obj.mobile ||
+      obj.phoneNumber ||
+      obj.customer?.phone ||
+      obj.customer?.mobile;
+    if (directPhone && directPhone !== "N/A") return String(directPhone);
   }
+
+  // Deep recursive fallback scanner loop
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key) && obj[key]) {
+      const val = obj[key];
+      const lowerKey = key.toLowerCase();
+
+      if (
+        searchType === "name" &&
+        (lowerKey.includes("cust") || lowerKey.includes("name")) &&
+        typeof val === "string" &&
+        val.length > 2 &&
+        val !== "Customer"
+      ) {
+        return val;
+      }
+      if (
+        searchType === "phone" &&
+        (lowerKey.includes("phone") ||
+          lowerKey.includes("mob") ||
+          lowerKey.includes("cell")) &&
+        (typeof val === "string" || typeof val === "number") &&
+        String(val).length >= 10
+      ) {
+        return String(val);
+      }
+      if (typeof val === "object") {
+        const deepResult = autoScanKey(val, searchType);
+        if (deepResult) return deepResult;
+      }
+    }
+  }
+  return null;
 }
 
 // ==========================================
-// 1. PERFECTLY CENTERED TAGS FOR RIBBON PRINTERS
+// 1. PERFECTLY CENTERED TAGS
 // ==========================================
 export function printTags(order: any, storeInfo: any) {
   if (Platform.OS !== "web" || typeof window === "undefined" || !order) return;
-  logOrderObject(order);
 
   try {
     let tagBlocks = "";
@@ -32,15 +82,7 @@ export function printTags(order: any, storeInfo: any) {
     ).replace(/^[A-Za-z-]+/, "");
     const formattedId = "DI-" + orderIdStr.padStart(5, "0");
 
-    const customerName =
-      order.customerName ||
-      order.customer?.name ||
-      order.customer?.customerName ||
-      order.customer?.fullName ||
-      (order.customer && typeof order.customer === "object"
-        ? Object.values(order.customer)[1]
-        : null) ||
-      "Customer";
+    const customerName = autoScanKey(order, "name") || "Customer";
 
     const orderDate = order.createdAt
       ? new Date(order.createdAt).toLocaleDateString("en-GB", {
@@ -73,7 +115,6 @@ export function printTags(order: any, storeInfo: any) {
 
       for (let i = 1; i <= totalQty; i++) {
         tagBlocks += `
-          <!-- width changed to 100% and text-align set to center to bring content to middle of the roll -->
           <div style="width: 100%; max-width: 54mm; padding: 2px 0; margin-bottom: 8px; border-bottom: 1px dashed #000; font-family: 'Courier New', monospace; font-size: 13px; font-weight: 900; color: #000 !important; text-align: center; page-break-inside: avoid;">
             <div style="font-size: 18px; font-weight: 900; color: #000 !important;">${formattedId}</div>
             <div style="font-size: 14px; font-weight: 900; margin-top: 2px; color: #000 !important;">${customerName}</div>
@@ -111,39 +152,26 @@ export function printTags(order: any, storeInfo: any) {
 }
 
 // ==========================================
-// 2. PERFECT LENGTH DENSITY ADJUSTED BILL
+// 2. EXTRA CONCISE BILL (NO MATHEMATICAL DIVISION)
 // ==========================================
 export function printBill(order: any, storeInfo: any) {
   if (Platform.OS !== "web" || typeof window === "undefined" || !order) return;
-  logOrderObject(order);
 
   try {
     let itemRows = "";
     const items =
       order.items || order.garments || order.orderItems || order.clothes || [];
     let totalPcs = 0;
-    let grossAmount = 0;
-
-    const globalTotal =
-      order.totalAmount ||
-      order.grossAmount ||
-      order.netPayable ||
-      order.amount ||
-      order.financials?.grossAmount ||
-      order.financials?.netPayable ||
-      0;
 
     items.forEach((item: any) => {
       const qty = item.qty || item.quantity || 1;
 
-      let unitRate = item.price ?? item.rate ?? item.amount ?? item.cost ?? 0;
-      if (unitRate === 0 && globalTotal > 0 && items.length > 0) {
-        unitRate = globalTotal / items.length;
-      }
-
+      // STAGE 1: Real Native Rates only. If 0 or missing, it prints 0. No dynamic division arithmetic.
+      const unitRate = Number(
+        item.price || item.rate || item.unitPrice || item.itemPrice || 0,
+      );
       const itemTotal = unitRate * qty;
       totalPcs += qty;
-      grossAmount += itemTotal;
 
       const serviceAbbr =
         SERVICE_ABBR[item.serviceType || item.service] ||
@@ -163,45 +191,23 @@ export function printBill(order: any, storeInfo: any) {
       `;
     });
 
-    if (grossAmount === 0 || Math.abs(grossAmount - globalTotal) > 0.05) {
-      grossAmount = globalTotal;
-    }
-    if (totalPcs === 0) {
-      totalPcs =
-        order.totalQty ||
-        order.totalQuantity ||
-        order.totalPcs ||
-        items.length ||
-        1;
-    }
+    const grossAmount = Number(
+      order.totalAmount ||
+        order.grossAmount ||
+        order.netPayable ||
+        order.amount ||
+        0,
+    );
+    const advance = Number(
+      order.advanceAmount || order.advancePaid || order.advance || 0,
+    );
+    const balance = Number(
+      order.balanceDue || order.balance || grossAmount - advance,
+    );
 
-    const advance =
-      order.advanceAmount || order.advancePaid || order.advance || 0;
-    const balance = grossAmount - advance;
-
-    const customerName =
-      order.customerName ||
-      order.customer?.name ||
-      order.customer?.customerName ||
-      order.customer?.fullName ||
-      (order.customer && typeof order.customer === "object"
-        ? order.customer.name ||
-          order.customer.customerName ||
-          Object.values(order.customer)[1]
-        : null) ||
-      "Customer";
-
-    const customerPhone =
-      order.customerPhone ||
-      order.customer?.phone ||
-      order.customer?.mobile ||
-      order.customer?.phoneNumber ||
-      (order.customer && typeof order.customer === "object"
-        ? order.customer.phone ||
-          order.customer.mobile ||
-          Object.values(order.customer)[2]
-        : null) ||
-      "N/A";
+    // STAGE 2: Absolute Scanner Mapping for metadata logs
+    const customerName = autoScanKey(order, "name") || "Customer";
+    const customerPhone = autoScanKey(order, "phone") || "N/A";
 
     const orderIdStr = String(
       order.id || order.orderNumber || order.uid || "",
@@ -211,7 +217,6 @@ export function printBill(order: any, storeInfo: any) {
     const formattedDate = order.createdAt
       ? new Date(order.createdAt).toLocaleDateString("en-GB")
       : new Date().toLocaleDateString("en-GB");
-
     const readyDateRaw =
       order.readyDate ||
       order.pickupDeadline ||
