@@ -202,7 +202,9 @@ export function printTags(order: any, storeInfo: any) {
         <style>
           @page { size: 38.1mm auto; margin: 0; }
           * { box-sizing: border-box; font-weight: 900 !important; color: #000 !important; margin: 0; padding: 0; }
-          body { font-family: 'Courier New', Courier, monospace; width: 36mm; padding: 3px 2px; background-color: #fff; }
+          html, body { writing-mode: horizontal-tb; transform: none; }
+          html { width: 100%; margin: 0; padding: 0; }
+          body { font-family: 'Courier New', Courier, monospace; width: 36mm; margin: 0 auto; padding: 3px 2px; background-color: #fff; }
           .tag-wrapper { width: 100%; text-align: left; padding: 2px 0; page-break-inside: avoid; display: block; }
           .brand { font-size: 11px; text-align: center; margin-bottom: 3px; }
           .order-id { font-size: 17px; font-weight: 900; line-height: 1.1; margin-bottom: 2px; }
@@ -360,7 +362,9 @@ export function printBill(order: any, customer: any, storeInfo: any) {
         <style>
           @page { size: 80mm auto; margin: 0; }
           * { box-sizing: border-box; font-weight: 900 !important; color: #000 !important; margin: 0; padding: 0; }
-          body { font-family: 'Courier New', Courier, monospace; width: 74mm; padding: 5px 4px; font-size: 11px; line-height: 1.25; background-color: #fff; }
+          html, body { writing-mode: horizontal-tb; transform: none; }
+          html { width: 100%; margin: 0; padding: 0; }
+          body { font-family: 'Courier New', Courier, monospace; width: 74mm; margin: 0 auto; padding: 5px 4px; font-size: 11px; line-height: 1.25; background-color: #fff; }
           .center { text-align: center; }
           .bold { font-weight: 900; }
           .line { border-top: 1.5px dashed #000; margin: 5px 0; }
