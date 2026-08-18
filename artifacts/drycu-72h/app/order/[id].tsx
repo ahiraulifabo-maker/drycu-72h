@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Linking, Platform } from 'react-native';
+import { Image, Linking, Platform } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -56,6 +56,7 @@ function TagLayout({ order, customerName }: { order: Order; customerName: string
   return (
     <View style={styles.tagOuter}>
       <View style={styles.tagBox}>
+        <Text style={styles.tagBrand}>DRYCU-72H</Text>
         <View style={styles.tagLogoBox}>
           <Text style={styles.tagLogoX}>✕</Text>
         </View>
@@ -114,9 +115,7 @@ function BillLayout({ order, customerName, customerMobile, customerAddress, stor
     <View style={styles.billOuter}>
       <View style={styles.billBox}>
         {/* Header */}
-        <View style={styles.billLogoBox}>
-          <Text style={styles.billLogoX}>✕</Text>
-        </View>
+        <Image source={require('@/assets/images/drycu-logo.jpeg')} style={styles.billLogoImage} resizeMode="contain" />
         <Text style={styles.billStoreName}>{storeInfo.name}</Text>
         <Text style={styles.billAddress}>{storeInfo.line1}</Text>
         <Text style={styles.billAddress}>{storeInfo.line2}</Text>
@@ -369,7 +368,7 @@ Thank you for choosing DRYCU-72H! ${storeInfo.website}`;
                 color={activeTab === t ? colors.primary : colors.mutedForeground}
               />
               <Text style={[styles.tabText, { color: activeTab === t ? colors.primary : colors.mutedForeground }]}>
-                {t === 'details' ? 'Details' : t === 'tag' ? 'Tag (58mm)' : 'Bill (80mm)'}
+                {t === 'details' ? 'Details' : t === 'tag' ? 'Tag (1.5 in)' : 'Bill (80mm)'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -389,7 +388,7 @@ Thank you for choosing DRYCU-72H! ${storeInfo.website}`;
                 >
                   <Ionicons name="pricetag" size={28} color={colors.primary} />
                   <Text style={[styles.printCardTitle, { color: colors.foreground }]}>Print Tags</Text>
-                  <Text style={[styles.printCardSub, { color: colors.mutedForeground }]}>58mm · {order.items.length} tag{order.items.length !== 1 ? 's' : ''}</Text>
+                    <Text style={[styles.printCardSub, { color: colors.mutedForeground }]}>1.5 in wide · {order.items.length} tag{order.items.length !== 1 ? 's' : ''}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.accent }]}
@@ -640,7 +639,8 @@ const styles = StyleSheet.create({
 
   // Tag styles
   tagOuter: { alignItems: 'center', paddingVertical: 8 },
-  tagBox: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#aaa', padding: 14, width: 240, borderRadius: 6, alignItems: 'center' },
+  tagBox: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#aaa', padding: 10, width: 144, borderRadius: 6, alignItems: 'center' },
+  tagBrand: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 1, color: '#000', marginBottom: 2 },
   tagLogoBox: { width: 32, height: 32, borderWidth: 2, borderColor: '#000', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   tagLogoX: { fontSize: 16, fontFamily: 'Inter_700Bold', color: '#000' },
   tagStoreName: { fontSize: 14, fontFamily: 'Inter_700Bold', letterSpacing: 1.5, textTransform: 'uppercase', color: '#000' },
@@ -661,8 +661,7 @@ const styles = StyleSheet.create({
   // Bill styles
   billOuter: { alignItems: 'center', paddingVertical: 8 },
   billBox: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#aaa', padding: 16, width: '100%', borderRadius: 6 },
-  billLogoBox: { width: 32, height: 32, borderWidth: 2, borderColor: '#000', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 4 },
-  billLogoX: { fontSize: 16, fontFamily: 'Inter_700Bold', color: '#000' },
+  billLogoImage: { width: 150, height: 150, alignSelf: 'center', marginBottom: 5 },
   billStoreName: { fontSize: 15, fontFamily: 'Inter_700Bold', textAlign: 'center', letterSpacing: 1, textTransform: 'uppercase', color: '#000' },
   billAddress: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center', color: '#333', marginTop: 1 },
   billContact: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center', color: '#333', marginTop: 2 },

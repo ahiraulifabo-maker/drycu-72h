@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 export function exportBackupData(data: any, fileName = 'drycu72h_backup.json') {
   if (Platform.OS !== 'web') return;
   
-  const jsonString = data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(data))};
+  const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(data))}`;
   const downloadAnchor = document.createElement('a');
   downloadAnchor.setAttribute('href', jsonString);
   downloadAnchor.setAttribute('download', fileName);

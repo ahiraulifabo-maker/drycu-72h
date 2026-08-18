@@ -1,9 +1,28 @@
-import { Platform } from 'react-native';
+import { Image, Platform } from 'react-native';
 
 const SERVICE_ABBR: Record<string, string> = {
   'Dry Cleaning': 'DC', 'Laundry': 'LD', 'Ironing': 'IR', 'Top Up': 'TP', 'Topup': 'TP',
   'DC': 'DC', 'LD': 'LD', 'IR': 'IR', 'TP': 'TP'
 };
+
+const DRYCU_LOGO_ASSET = require('../assets/images/drycu-logo.jpeg');
+
+function getLogoUri(): string {
+  try {
+    return Image.resolveAssetSource(DRYCU_LOGO_ASSET)?.uri ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 function getSequentialOrderNumber(target: any): string {
   if (typeof window !== 'undefined' && window.location) {
@@ -159,14 +178,15 @@ export function printTags(order: any, storeInfo: any) {
       for (let i = 0; i < item.qty; i++) {
         tagsHtml += `
           <div class="tag-wrapper">
-            <div class="order-id">${orderNumber}</div>
-            <div class="cust-title">${customerName}</div>
+            <div class="brand">DRYCU-72H</div>
+            <div class="order-id">${escapeHtml(orderNumber)}</div>
+            <div class="cust-title">${escapeHtml(customerName)}</div>
             <div class="svc-row">
               <span class="svc-code">${item.service}</span>
               <span class="counter-ratio">${currentPieceIndex}/${totalPcs}</span>
             </div>
             <div class="info-row">Ready: ${readyDateStr}</div>
-            <div class="info-row">Item: ${item.name}</div>
+            <div class="info-row">Item: ${escapeHtml(item.name)}</div>
             <div class="info-row">Booked: ${bookedDateStr}</div>
             <div class="dashed-separator">-------------------------</div>
           </div>
@@ -180,15 +200,16 @@ export function printTags(order: any, storeInfo: any) {
       <head>
         <title>DRYCU-72H Tags</title>
         <style>
-          @page { size: 58mm auto; margin: 0; }
+          @page { size: 38.1mm auto; margin: 0; }
           * { box-sizing: border-box; font-weight: 900 !important; color: #000 !important; margin: 0; padding: 0; }
-          body { font-family: 'Courier New', Courier, monospace; width: 54mm; padding: 4px 2px; background-color: #fff; }
+          body { font-family: 'Courier New', Courier, monospace; width: 36mm; padding: 3px 2px; background-color: #fff; }
           .tag-wrapper { width: 100%; text-align: left; padding: 2px 0; page-break-inside: avoid; display: block; }
-          .order-id { font-size: 20px; font-weight: 900; line-height: 1.1; margin-bottom: 2px; }
-          .cust-title { font-size: 14px; font-weight: 900; line-height: 1.2; margin-bottom: 3px; }
-          .svc-row { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 900; margin-bottom: 3px; width: 85%; }
-          .info-row { font-size: 12px; font-weight: 900; line-height: 1.3; margin-bottom: 1px; }
-          .dashed-separator { font-size: 11px; font-weight: 900; white-space: nowrap; margin-top: 4px; margin-bottom: 6px; }
+          .brand { font-size: 11px; text-align: center; margin-bottom: 3px; }
+          .order-id { font-size: 17px; font-weight: 900; line-height: 1.1; margin-bottom: 2px; }
+          .cust-title { font-size: 11px; font-weight: 900; line-height: 1.2; margin-bottom: 3px; overflow-wrap: anywhere; }
+          .svc-row { display: flex; justify-content: space-between; font-size: 11px; font-weight: 900; margin-bottom: 3px; width: 100%; }
+          .info-row { font-size: 10px; font-weight: 900; line-height: 1.25; margin-bottom: 1px; overflow-wrap: anywhere; }
+          .dashed-separator { font-size: 9px; font-weight: 900; white-space: nowrap; margin-top: 4px; margin-bottom: 5px; overflow: hidden; }
         </style>
       </head>
       <body>${tagsHtml}</body>
@@ -207,7 +228,7 @@ export function printTags(order: any, storeInfo: any) {
   }
 }
 
-export function printBill(order: any, storeInfo: any) {
+export function printBill(order: any, customer: any, storeInfo: any) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
   try {
@@ -215,8 +236,9 @@ export function printBill(order: any, storeInfo: any) {
     const selectedCustState = (window as any).selectedCustomer || (window as any).currentCustomer || {};
 
     const directInfo = extractCustomerDetailsDirectly();
-    let customerName = order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || directInfo.name;
-    let customerPhone = order?.customerPhone || order?.phone || globalOrder?.customerPhone || selectedCustState?.phone || directInfo.phone;
+    let customerName = customer?.name || order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || directInfo.name;
+    let customerPhone = customer?.mobile || customer?.phone || order?.customerPhone || order?.phone || globalOrder?.customerPhone || selectedCustState?.phone || directInfo.phone;
+    let customerAddress = customer?.address || order?.customerAddress || globalOrder?.customerAddress || '';
     let orderNumber = getSequentialOrderNumber(order || globalOrder);
 
     if (customerName === 'Walk-in Customer' && directInfo.name !== 'Walk-in Customer') {
@@ -226,17 +248,32 @@ export function printBill(order: any, storeInfo: any) {
       customerPhone = directInfo.phone;
     }
 
-    let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
+    let detectedItems: Array<{name: string, service: string, qty: number, kg: number, price: number}> = [];
     
     // 1. Check if structural app state contains current live items
     const stateItems = order?.items || order?.garments || globalOrder?.items || (window as any).cartItems || [];
     if (Array.isArray(stateItems) && stateItems.length > 0) {
       stateItems.forEach((item: any) => {
+        const qty = Number(item.qty || item.quantity || 1);
+        const unitPrice = Number(item.price !== undefined ? item.price : (item.rate || item.ratePerUnit || item.customPrice || 0));
         detectedItems.push({
           name: item.name || item.itemName || 'Garment',
-          service: SERVICE_ABBR[item.service] || item.service || 'DC',
-          qty: Number(item.qty || item.quantity || 1),
-          price: Number(item.price !== undefined ? item.price : (item.rate || item.customPrice || 0))
+          service: SERVICE_ABBR[item.service] || SERVICE_ABBR[item.serviceType] || item.service || item.serviceType || 'DC',
+          qty,
+          kg: Number(item.kg || 0),
+          price: Number(item.subtotal !== undefined ? item.subtotal : unitPrice * qty)
+        });
+      });
+    }
+
+    if (Array.isArray(order?.topUps)) {
+      order.topUps.filter((topUp: any) => Number(topUp.qty) > 0).forEach((topUp: any) => {
+        detectedItems.push({
+          name: topUp.name || 'Top-Up Service',
+          service: 'TP',
+          qty: Number(topUp.qty),
+          kg: 0,
+          price: Number(topUp.subtotal ?? Number(topUp.rate || 0) * Number(topUp.qty))
         });
       });
     }
@@ -281,6 +318,7 @@ export function printBill(order: any, storeInfo: any) {
               name: nameCand.replace(/[^a-zA-Z0-9\s\-\[\]\/]/g, '').trim(),
               service: svc,
               qty: detectedQty,
+              kg: 0,
               price: detectedPrice
             });
           }
@@ -289,63 +327,81 @@ export function printBill(order: any, storeInfo: any) {
     }
 
     // REMOVED ALL HARDCODED FALLBACK ARRAYS TO PREVENT CORRUPTING SYSTEM PRICES
-    let grossAmount = detectedItems.reduce((acc, curr) => acc + (curr.price * curr.qty), 0);
-    let advance = Number(order?.advanceAmount || globalOrder?.advanceAmount || 0);
-    let balance = grossAmount - advance;
+    let grossAmount = Number(order?.grossAmount ?? globalOrder?.grossAmount ?? detectedItems.reduce((acc, curr) => acc + curr.price, 0));
+    let discountAmount = Number(order?.discountAmount ?? globalOrder?.discountAmount ?? 0);
+    let netPayable = Number(order?.netPayable ?? globalOrder?.netPayable ?? (grossAmount - discountAmount));
+    let advance = Number(order?.advancePaid ?? order?.advanceAmount ?? globalOrder?.advancePaid ?? globalOrder?.advanceAmount ?? 0);
+    let balance = netPayable - advance;
     let totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
+    let totalKg = detectedItems.reduce((acc, curr) => acc + curr.kg, 0);
 
     let rowsHtml = '';
     detectedItems.forEach((item) => {
       rowsHtml += `
         <tr style="vertical-align: top;">
-          <td style="padding: 4px 0; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important;">
-            • ${item.name} [${item.service}] x${item.qty}
-          </td>
-          <td style="padding: 4px 0; text-align: right; font-family: 'Courier New', monospace; font-size: 12px; font-weight: 900; color: #000 !important;">
-            ₹${(item.price * item.qty).toFixed(2)}
-          </td>
+          <td style="padding: 3px 0; font-size: 10px;">${item.kg > 0 ? item.kg.toFixed(3) : '-'}</td>
+          <td style="padding: 3px 0; font-size: 10px;">${item.qty > 0 ? item.qty : '-'}</td>
+          <td style="padding: 3px 0; font-size: 10px;">${escapeHtml(item.service)}</td>
+          <td style="padding: 3px 0; text-align: right; font-size: 10px;">₹${item.price.toFixed(2)}</td>
         </tr>
       `;
     });
 
-    const formattedDate = new Date().toLocaleDateString('en-GB');
-    const readyDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB');
+    const logoUri = getLogoUri();
+    const formattedDate = new Date(order?.createdAt || Date.now()).toLocaleDateString('en-GB');
+    const readyDate = new Date(order?.pickupDeadline || Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB');
+    const store = storeInfo || {};
+    const logoHtml = logoUri ? `<img class="store-logo" src="${escapeHtml(logoUri)}" alt="DRYCU-72H logo">` : '';
 
     const html = `
       <html>
       <head>
         <title>DRYCU-72H Invoice</title>
         <style>
-          @page { size: 58mm auto; margin: 0; }
+          @page { size: 80mm auto; margin: 0; }
           * { box-sizing: border-box; font-weight: 900 !important; color: #000 !important; margin: 0; padding: 0; }
-          body { font-family: 'Courier New', Courier, monospace; width: 54mm; padding: 5px; font-size: 11.5px; line-height: 1.25; background-color: #fff; }
+          body { font-family: 'Courier New', Courier, monospace; width: 74mm; padding: 5px 4px; font-size: 11px; line-height: 1.25; background-color: #fff; }
           .center { text-align: center; }
           .bold { font-weight: 900; }
           .line { border-top: 1.5px dashed #000; margin: 5px 0; }
           table { width: 100%; border-collapse: collapse; margin-top: 3px; }
           td { color: #000; font-weight: 900; }
-          .tc-section { font-size: 11px; text-align: left; margin-top: 4px; line-height: 1.3; font-weight: 900; }
+          .store-logo { width: 28mm; height: 28mm; object-fit: contain; display: block; margin: 0 auto 3px; }
+          .store-name { font-size: 16px; letter-spacing: 0.5px; }
+          .store-address { font-size: 10px; line-height: 1.25; }
+          .store-contact { font-size: 10px; }
+          .tagline { font-size: 9px; margin-top: 2px; }
+          .tc-section { font-size: 10px; text-align: left; margin-top: 4px; line-height: 1.3; font-weight: 900; }
+          .summary-table td { padding: 1px 0; }
+          .items-table th { border-bottom: 1px solid #000; padding: 2px 0; font-size: 10px; text-align: left; }
+          .items-table th:last-child, .items-table td:last-child { text-align: right; }
         </style>
       </head>
       <body>
-        <div class="center bold" style="font-size: 14px; letter-spacing: 0.1px;">⚡DRYCU-72H⚡</div>
-        <div class="center bold" style="font-size: 11.5px;">AHIRAULI</div>
-        <div class="center" style="font-size: 9.5px;">📍 Opp Indian Oil Petrol Pump<br>📞 9519705388 | www.drycu-72h.in</div>
+        ${logoHtml}
+        <div class="center bold store-name">${escapeHtml(store.name || 'DRYCU-72H')}</div>
+        <div class="center store-address">${escapeHtml(store.line1 || '')}<br>${escapeHtml(store.line2 || '')}</div>
+        <div class="center store-contact">Contact: ${escapeHtml(store.contact || '')}</div>
+        <div class="center tagline">${escapeHtml(store.tagline || 'Clean. Fast. You.')}</div>
         <div class="line"></div>
-        <div class="bold" style="font-size: 13px; margin-bottom: 2px;">ORDER NO: ${orderNumber}</div>
-        <div style="font-size: 12px; margin-bottom: 1px;"><b>CUST:</b> ${customerName}</div>
-        <div style="font-size: 12px; margin-bottom: 1px;"><b>MOB :</b> ${customerPhone}</div>
-        <div style="font-size: 11.5px;"><b>DATE:</b> ${formattedDate} | <b>RDY:</b> ${readyDate}</div>
+        <div class="bold" style="font-size: 15px; margin-bottom: 2px;">${escapeHtml(orderNumber)}</div>
+        <div style="font-size: 11px; margin-bottom: 1px;"><b>Customer:</b> ${escapeHtml(customerName)}</div>
+        <div style="font-size: 11px; margin-bottom: 1px;"><b>Mobile:</b> ${escapeHtml(customerPhone)}</div>
+        ${customerAddress ? `<div style="font-size: 10px; margin-bottom: 1px;"><b>Address:</b> ${escapeHtml(customerAddress)}</div>` : ''}
+        <div style="font-size: 10px; margin-bottom: 1px;"><b>Place of Supply:</b> ${escapeHtml(store.placeOfSupply || '')}</div>
+        <div style="font-size: 10.5px;"><b>DATE:</b> ${formattedDate} | <b>RDY:</b> ${readyDate}</div>
         <div class="line"></div>
         <div class="bold" style="font-size: 11px; letter-spacing: 0.5px; margin-bottom: 2px;">ITEM DETAILS</div>
-        <table><tbody>${rowsHtml}</tbody></table>
+        <table class="items-table"><thead><tr><th>KG</th><th>Qty</th><th>Service</th><th>INR</th></tr></thead><tbody>${rowsHtml}</tbody></table>
         <div class="line"></div>
-        <table style="font-size: 12px;">
+        <table class="summary-table" style="font-size: 11px;">
+           <tr><td>T.KG</td><td style="text-align: right;">${totalKg.toFixed(3)}</td></tr>
           <tr><td>TOTAL PCS</td><td style="text-align: right;">${totalPcs} Pcs</td></tr>
           <tr><td>GROSS AMT</td><td style="text-align: right;">₹${grossAmount.toFixed(2)}</td></tr>
+           ${discountAmount > 0 ? `<tr><td>DISCOUNT</td><td style="text-align: right;">-₹${discountAmount.toFixed(2)}</td></tr>` : ''}
           <tr><td>ADV PAID</td><td style="text-align: right;">₹${advance.toFixed(2)}</td></tr>
           <tr style="font-size: 13px; font-weight: 900;">
-            <td style="padding-top: 3px;">🧾 DUE BAL</td>
+             <td style="padding-top: 3px;">BAL. AMT.</td>
             <td style="text-align: right; padding-top: 3px; border-top: 1.5px dashed #000; font-size: 14px;">₹${balance.toFixed(2)}</td>
           </tr>
         </table>

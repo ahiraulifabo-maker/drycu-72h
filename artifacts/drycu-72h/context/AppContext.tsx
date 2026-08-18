@@ -149,7 +149,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (d)  setNextDI(parseInt(d, 10));
         if (t)  setTopUpRates({ ...buildDefaultTopUpRates(), ...JSON.parse(t) });
         if (g)  setGarmentRateOverrides(JSON.parse(g));
-        if (si) setStoreInfo({ ...DEFAULT_STORE_INFO, ...JSON.parse(si) });
+        if (si) {
+          const savedInfo = { ...DEFAULT_STORE_INFO, ...JSON.parse(si) } as StoreInfoData;
+          // Migrate the old FABO wording so existing devices also print the
+          // new DRYCU-72H branding instead of keeping the legacy tagline.
+          if (/fabo/i.test(savedInfo.name)) {
+            savedInfo.name = savedInfo.name.replace(/fabo/gi, 'DRYCU-72H');
+          }
+          if (/fabo|fabulous homes and fabric/i.test(savedInfo.tagline)) {
+            savedInfo.tagline = 'Clean. Fast. You.';
+          }
+          setStoreInfo(savedInfo);
+        }
         if (sid) {
           setStoreId(sid);
           // Loading local data isn't a "change" that should trigger a push.
