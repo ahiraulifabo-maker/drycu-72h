@@ -457,13 +457,13 @@ export async function printBill(order: any, customer: any, storeInfo: any): Prom
           <span style="border-top: 1.5px solid #000; width: 45%; text-align: center; padding-top: 2px;">SIGNATURE</span>
         </div>
       </body>
-      </html>
-    `;
-
+    </html>`;
+    };
+  
   export const handlePrintBill = async (billHtml?: string) => {
   console.log("Print bill initiated");
 
-  const htmlContent = billHtml || `<h1>Bill Reciept</h1><p>order details go here...</p>`;
+  const htmlContent = billHtml || `<h1>bill reciept</h1><p>order details go here...</p>`;h1
 
   try {
     if (Platform.OS === 'web') {
