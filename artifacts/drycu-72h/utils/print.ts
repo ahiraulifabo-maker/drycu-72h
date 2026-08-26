@@ -250,7 +250,7 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
 export async function printBill(order: any, customer: any, storeInfo: any): Promise<void> {
   const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 
-  try {
+
     const globalOrder = isWeb
       ? (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {}
       : {};
