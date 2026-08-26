@@ -460,29 +460,20 @@ export async function printBill(order: any, customer: any, storeInfo: any): Prom
       </html>
     `;
 
-    if (isWeb) {
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.write(html);
-        win.document.close();
-        win.focus();
-        setTimeout(() => { win.print(); win.close(); }, 400);
-      }
+  export const handlePrintBill = async (billHtml?: string) => {
+  console.log("Print bill initiated");
+
+  const htmlContent = billHtml || `<h1>Bill Reciept</h1><p>order details go here...</p>`;
+
+  try {
+    if (Platform.OS === 'web') {
+      window.print();
     } else {
       await Print.printAsync({
-        html,
-        width: 302,
-        orientation: Print.Orientation.portrait,
-        margins: { top: 0, right: 0, bottom: 0, left: 0 },
+        html: htmlContent,
       });
     }
-  } catch (err) {
-    console.error(err);
-    if (!isWeb) {
-      Alert.alert('Printing unavailable', 'The device could not open its print service. Check that a printer or system print service is available.');
-    }
+  } catch (error) {
+    console.error("Printing failed:", error);
   }
 }
-
-export function sendWhatsAppNotification(order: any, customerPhone: string, encodedMessage: string) {}
-// real-workflow-v24: 994411
