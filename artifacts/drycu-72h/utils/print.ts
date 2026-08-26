@@ -460,20 +460,3 @@ export async function printBill(order: any, customer: any, storeInfo: any): Prom
     </html>`;
     };
   
-  export const handlePrintBill = async (billHtml?: string) => {
-  console.log("Print bill initiated");
-
-  const htmlContent = billHtml || `<h1>bill reciept</h1><p>order details go here...</p>`;h1
-
-  try {
-    if (Platform.OS === 'web') {
-      window.print();
-    } else {
-      await Print.printAsync({
-        html: htmlContent,
-      });
-    }
-  } catch (error) {
-    console.error("Printing failed:", error);
-  }
-}
