@@ -459,4 +459,23 @@ export async function printBill(order: any, customer: any, storeInfo: any): Prom
       </body>
     </html>`;
     };
-  
+
+// Export the bill printing trigger function
+export const handlePrintBill = async (billHtml?: string) => {
+  try {
+    if (Platform.OS === 'web') {
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(billHtml || '<h1>No Bill Data</h1>');
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+      }
+    } else {
+      await Print.printAsync({ html: billHtml || '' });
+    }
+  } catch (error) {
+    console.error("Failed to print bill:", error);
+  }
+};
