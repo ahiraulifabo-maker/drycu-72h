@@ -1,4 +1,5 @@
-import { Image, Platform } from 'react-native';
+import { Alert, Image, Platform } from 'react-native';
+import * as Print from 'expo-print';
 
 const SERVICE_ABBR: Record<string, string> = {
   'Dry Cleaning': 'DC', 'Laundry': 'LD', 'Ironing': 'IR', 'Top Up': 'TP', 'Topup': 'TP',
@@ -99,12 +100,16 @@ function extractCustomerDetailsDirectly() {
   };
 }
 
-export function printTags(order: any, storeInfo: any) {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+export async function printTags(order: any, storeInfo: any): Promise<void> {
+  const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 
   try {
-    const globalOrder = (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {};
-    const selectedCustState = (window as any).selectedCustomer || (window as any).currentCustomer || {};
+    const globalOrder = isWeb
+      ? (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {}
+      : {};
+    const selectedCustState = isWeb
+      ? (window as any).selectedCustomer || (window as any).currentCustomer || {}
+      : {};
     
     const directInfo = extractCustomerDetailsDirectly();
     let customerName = order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || directInfo.name;
@@ -115,7 +120,7 @@ export function printTags(order: any, storeInfo: any) {
     }
 
     let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
-    const stateItems = order?.items || order?.garments || globalOrder?.items || (window as any).cartItems || [];
+    const stateItems = order?.items || order?.garments || globalOrder?.items || (isWeb ? (window as any).cartItems : []) || [];
     
     if (Array.isArray(stateItems) && stateItems.length > 0) {
       stateItems.forEach((item: any) => {
@@ -128,7 +133,7 @@ export function printTags(order: any, storeInfo: any) {
       });
     }
 
-    if (detectedItems.length === 0 && typeof document !== 'undefined') {
+    if (detectedItems.length === 0 && isWeb && typeof document !== 'undefined') {
       const rows = document.querySelectorAll('table tr, tr, .item-row, .cart-item, div[class*="row"], div[class*="item"]');
       rows.forEach((row: any) => {
         const txt = (row.innerText || '').trim();
@@ -218,24 +223,40 @@ export function printTags(order: any, storeInfo: any) {
       </html>
     `;
 
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      setTimeout(() => { win.print(); win.close(); }, 400);
+    if (isWeb) {
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => { win.print(); win.close(); }, 400);
+      }
+    } else {
+      await Print.printAsync({
+        html,
+        width: 144,
+        orientation: Print.Orientation.portrait,
+        margins: { top: 0, right: 0, bottom: 0, left: 0 },
+      });
     }
   } catch (err) {
     console.error(err);
+    if (!isWeb) {
+      Alert.alert('Printing unavailable', 'The device could not open its print service. Check that a printer or system print service is available.');
+    }
   }
 }
 
-export function printBill(order: any, customer: any, storeInfo: any) {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+export async function printBill(order: any, customer: any, storeInfo: any): Promise<void> {
+  const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 
   try {
-    const globalOrder = (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {};
-    const selectedCustState = (window as any).selectedCustomer || (window as any).currentCustomer || {};
+    const globalOrder = isWeb
+      ? (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {}
+      : {};
+    const selectedCustState = isWeb
+      ? (window as any).selectedCustomer || (window as any).currentCustomer || {}
+      : {};
 
     const directInfo = extractCustomerDetailsDirectly();
     let customerName = customer?.name || order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || directInfo.name;
@@ -253,7 +274,7 @@ export function printBill(order: any, customer: any, storeInfo: any) {
     let detectedItems: Array<{name: string, service: string, qty: number, kg: number, price: number}> = [];
     
     // 1. Check if structural app state contains current live items
-    const stateItems = order?.items || order?.garments || globalOrder?.items || (window as any).cartItems || [];
+    const stateItems = order?.items || order?.garments || globalOrder?.items || (isWeb ? (window as any).cartItems : []) || [];
     if (Array.isArray(stateItems) && stateItems.length > 0) {
       stateItems.forEach((item: any) => {
         const qty = Number(item.qty || item.quantity || 1);
@@ -281,7 +302,7 @@ export function printBill(order: any, customer: any, storeInfo: any) {
     }
 
     // 2. Direct real-time screen extraction to intercept dynamic input/temporary changes
-    if (detectedItems.length === 0 && typeof document !== 'undefined') {
+    if (detectedItems.length === 0 && isWeb && typeof document !== 'undefined') {
       const rows = document.querySelectorAll('table tr, tr, .item-row, .cart-item, div[class*="row"], div[class*="item"]');
       rows.forEach((row: any) => {
         const txt = (row.innerText || '').trim();
@@ -364,53 +385,63 @@ export function printBill(order: any, customer: any, storeInfo: any) {
           * { box-sizing: border-box; font-weight: 900 !important; color: #000 !important; margin: 0; padding: 0; }
           html, body { writing-mode: horizontal-tb; transform: none; }
           html { width: 100%; margin: 0; padding: 0; }
-          body { font-family: 'Courier New', Courier, monospace; width: 74mm; margin: 0 auto; padding: 5px 4px; font-size: 11px; line-height: 1.25; background-color: #fff; }
+          body { font-family: 'Courier New', Courier, monospace; width: 74mm; margin: 0 auto; padding: 5px 4px; font-size: 11px; line-height: 1.25; background-color: #fff; color: #000; }
           .center { text-align: center; }
           .bold { font-weight: 900; }
-          .line { border-top: 1.5px dashed #000; margin: 5px 0; }
+          .line { border-top: 2px solid #000; margin: 6px 0; }
           table { width: 100%; border-collapse: collapse; margin-top: 3px; }
           td { color: #000; font-weight: 900; }
-          .store-logo { width: 28mm; height: 28mm; object-fit: contain; display: block; margin: 0 auto 3px; }
-          .store-name { font-size: 16px; letter-spacing: 0.5px; }
+          .store-header { border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 5px; }
+          .store-logo { width: 27mm; height: 27mm; object-fit: contain; display: block; margin: 0 auto 3px; }
+          .store-name { font-size: 17px; letter-spacing: 0.7px; }
           .store-address { font-size: 10px; line-height: 1.25; }
           .store-contact { font-size: 10px; }
-          .tagline { font-size: 9px; margin-top: 2px; }
+          .tagline { font-size: 9px; margin-top: 2px; font-weight: 900; }
+          .order-card { border: 2px solid #000; padding: 4px; margin: 5px 0; }
+          .order-card div { margin-bottom: 2px; }
+          .section-title { border-bottom: 2px solid #000; padding: 2px 0; margin-top: 5px; font-size: 11px; letter-spacing: 0.6px; }
           .tc-section { font-size: 10px; text-align: left; margin-top: 4px; line-height: 1.3; font-weight: 900; }
-          .summary-table td { padding: 1px 0; }
-          .items-table th { border-bottom: 1px solid #000; padding: 2px 0; font-size: 10px; text-align: left; }
+          .summary-box { border: 2px solid #000; padding: 4px; margin-top: 5px; }
+          .summary-table td { padding: 2px 0; }
+          .balance-row td { border-top: 2px solid #000; padding-top: 4px; font-size: 14px; }
+          .items-table { border-top: 2px solid #000; border-bottom: 2px solid #000; }
+          .items-table th { border-bottom: 2px solid #000; padding: 3px 0; font-size: 10px; text-align: left; }
           .items-table th:last-child, .items-table td:last-child { text-align: right; }
         </style>
       </head>
       <body>
-        ${logoHtml}
-        <div class="center bold store-name">${escapeHtml(store.name || 'DRYCU-72H')}</div>
-        <div class="center store-address">${escapeHtml(store.line1 || '')}<br>${escapeHtml(store.line2 || '')}</div>
-        <div class="center store-contact">Contact: ${escapeHtml(store.contact || '')}</div>
-        <div class="center tagline">${escapeHtml(store.tagline || 'Clean. Fast. You.')}</div>
-        <div class="line"></div>
-        <div class="bold" style="font-size: 15px; margin-bottom: 2px;">${escapeHtml(orderNumber)}</div>
-        <div style="font-size: 11px; margin-bottom: 1px;"><b>Customer:</b> ${escapeHtml(customerName)}</div>
-        <div style="font-size: 11px; margin-bottom: 1px;"><b>Mobile:</b> ${escapeHtml(customerPhone)}</div>
-        ${customerAddress ? `<div style="font-size: 10px; margin-bottom: 1px;"><b>Address:</b> ${escapeHtml(customerAddress)}</div>` : ''}
-        <div style="font-size: 10px; margin-bottom: 1px;"><b>Place of Supply:</b> ${escapeHtml(store.placeOfSupply || '')}</div>
-        <div style="font-size: 10.5px;"><b>DATE:</b> ${formattedDate} | <b>RDY:</b> ${readyDate}</div>
-        <div class="line"></div>
-        <div class="bold" style="font-size: 11px; letter-spacing: 0.5px; margin-bottom: 2px;">ITEM DETAILS</div>
+        <div class="store-header">
+          ${logoHtml}
+          <div class="center bold store-name">${escapeHtml(store.name || 'DRYCU-72H')}</div>
+          <div class="center store-address">${escapeHtml(store.line1 || '')}<br>${escapeHtml(store.line2 || '')}</div>
+          <div class="center store-contact">Contact: ${escapeHtml(store.contact || '')}</div>
+          <div class="center tagline">${escapeHtml(store.tagline || 'Clean. Fast. You.')}</div>
+        </div>
+        <div class="order-card">
+          <div class="bold" style="font-size: 15px;">${escapeHtml(orderNumber)}</div>
+          <div style="font-size: 11px;"><b>Customer:</b> ${escapeHtml(customerName)}</div>
+          <div style="font-size: 11px;"><b>Mobile:</b> ${escapeHtml(customerPhone)}</div>
+          ${customerAddress ? `<div style="font-size: 10px;"><b>Address:</b> ${escapeHtml(customerAddress)}</div>` : ''}
+          <div style="font-size: 10px;"><b>Place of Supply:</b> ${escapeHtml(store.placeOfSupply || '')}</div>
+          <div style="font-size: 10.5px;"><b>DATE:</b> ${formattedDate} | <b>RDY:</b> ${readyDate}</div>
+        </div>
+        <div class="section-title">ITEM DETAILS</div>
         <table class="items-table"><thead><tr><th>KG</th><th>Qty</th><th>Service</th><th>INR</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+        <div class="summary-box">
+          <table class="summary-table" style="font-size: 11px;">
+             <tr><td>T.KG</td><td style="text-align: right;">${totalKg.toFixed(3)}</td></tr>
+             <tr><td>TOTAL PCS</td><td style="text-align: right;">${totalPcs} Pcs</td></tr>
+             <tr><td>GROSS AMT</td><td style="text-align: right;">₹${grossAmount.toFixed(2)}</td></tr>
+              ${discountAmount > 0 ? `<tr><td>DISCOUNT</td><td style="text-align: right;">-₹${discountAmount.toFixed(2)}</td></tr>` : ''}
+             <tr><td>ADV PAID</td><td style="text-align: right;">₹${advance.toFixed(2)}</td></tr>
+             <tr class="balance-row">
+                <td>BAL. AMT.</td>
+               <td style="text-align: right;">₹${balance.toFixed(2)}</td>
+             </tr>
+           </table>
+        </div>
         <div class="line"></div>
-        <table class="summary-table" style="font-size: 11px;">
-           <tr><td>T.KG</td><td style="text-align: right;">${totalKg.toFixed(3)}</td></tr>
-          <tr><td>TOTAL PCS</td><td style="text-align: right;">${totalPcs} Pcs</td></tr>
-          <tr><td>GROSS AMT</td><td style="text-align: right;">₹${grossAmount.toFixed(2)}</td></tr>
-           ${discountAmount > 0 ? `<tr><td>DISCOUNT</td><td style="text-align: right;">-₹${discountAmount.toFixed(2)}</td></tr>` : ''}
-          <tr><td>ADV PAID</td><td style="text-align: right;">₹${advance.toFixed(2)}</td></tr>
-          <tr style="font-size: 13px; font-weight: 900;">
-             <td style="padding-top: 3px;">BAL. AMT.</td>
-            <td style="text-align: right; padding-top: 3px; border-top: 1.5px dashed #000; font-size: 14px;">₹${balance.toFixed(2)}</td>
-          </tr>
-        </table>
-        <div class="line"></div>
-        <div class="center bold" style="font-size: 11px; letter-spacing: 0.5px;">TERMS & CONDITIONS</div>
+        <div class="section-title center">TERMS & CONDITIONS</div>
         <div class="tc-section">
           • Not liable for color fastness, threads-out, or missing buttons.<br>
           • Report damage or mixed clothes within 24 hours of delivery.<br>
@@ -429,15 +460,27 @@ export function printBill(order: any, customer: any, storeInfo: any) {
       </html>
     `;
 
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      setTimeout(() => { win.print(); win.close(); }, 400);
+    if (isWeb) {
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => { win.print(); win.close(); }, 400);
+      }
+    } else {
+      await Print.printAsync({
+        html,
+        width: 302,
+        orientation: Print.Orientation.portrait,
+        margins: { top: 0, right: 0, bottom: 0, left: 0 },
+      });
     }
   } catch (err) {
     console.error(err);
+    if (!isWeb) {
+      Alert.alert('Printing unavailable', 'The device could not open its print service. Check that a printer or system print service is available.');
+    }
   }
 }
 
