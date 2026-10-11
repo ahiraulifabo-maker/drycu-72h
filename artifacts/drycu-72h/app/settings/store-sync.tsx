@@ -38,56 +38,65 @@ export default function StoreSyncScreen() {
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const handleCreate = () => {
-    Alert.alert(
-      'Create Store Code',
-      `This will generate a code for "${storeInfo.name}" and upload your current customers, orders, and rates so another phone can pull the same data.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Create',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              await createNewStore(storeInfo.name);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            } catch (e) {
-              Alert.alert('Error', 'Could not reach the server. Check your internet connection and try again.');
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ]
-    );
+  const confirmAction = (title: string, message: string, confirmLabel: string): Promise<boolean> => {
+    if (Platform.OS === 'web') {
+      return Promise.resolve(window.confirm(`${title}\n\n${message}`));
+    }
+    return new Promise(resolve => {
+      Alert.alert(title, message, [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: confirmLabel, onPress: () => resolve(true) },
+      ]);
+    });
   };
 
-  const handleJoin = () => {
+  const showMessage = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}\n\n${message}`);
+      return;
+    }
+    Alert.alert(title, message);
+  };
+
+  const handleCreate = async () => {
+    if (busy) return;
+    const confirmed = await confirmAction(
+      'Create Store Code',
+      `This will generate a code for "${storeInfo.name}" and upload customers, orders, rates, store details, and printer calibration so your phone can pull the same setup.`,
+      'Create',
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    try {
+      await createNewStore(storeInfo.name);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      showMessage('Error', 'Could not create the store code. Check the internet connection and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleJoin = async () => {
+    if (busy) return;
     const code = joinCode.trim();
     if (!code) return;
-    Alert.alert(
+    const confirmed = await confirmAction(
       'Join Store',
-      `This will REPLACE all data on this device (customers, orders, rates) with the data from store code "${code.toUpperCase()}". This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Replace & Join',
-          style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              await joinStore(code);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              setJoinCode('');
-            } catch (e) {
-              Alert.alert('Error', 'Store code not found, or the server could not be reached.');
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ]
+      `This will REPLACE all data on this device with store code "${code.toUpperCase()}", including its printer calibration. This cannot be undone.`,
+      'Replace & Join',
     );
+    if (!confirmed) return;
+    setBusy(true);
+    try {
+      await joinStore(code);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setJoinCode('');
+    } catch {
+      showMessage('Error', 'Store code not found, or the server could not be reached.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleCopy = async () => {
@@ -104,21 +113,20 @@ export default function StoreSyncScreen() {
       await pullLatest();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
-      Alert.alert('Error', 'Could not reach the server. Check your internet connection and try again.');
+      showMessage('Error', 'Could not reach the server. Check your internet connection and try again.');
     } finally {
       setBusy(false);
     }
   };
 
-  const handleLeave = () => {
-    Alert.alert(
+  const handleLeave = async () => {
+    if (busy) return;
+    const confirmed = await confirmAction(
       'Unlink This Device',
       'This device will stop syncing. The store code will keep working on any other device — your data is not deleted from the server.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Unlink', style: 'destructive', onPress: () => leaveStore() },
-      ]
+      'Unlink',
     );
+    if (confirmed) await leaveStore();
   };
 
   return (
@@ -132,9 +140,9 @@ export default function StoreSyncScreen() {
           <View style={[styles.infoCard, { backgroundColor: colors.secondary, borderColor: colors.primary }]}>
             <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
             <Text style={[styles.infoText, { color: colors.primary }]}>
-              The app normally works fully offline on this phone. Pairing with a Store Code lets a second phone
-              open the same customers, orders, and rates — useful for a counter phone and an owner's phone at the
-              same shop. Each shop/franchise should use its own separate code.
+              The app normally works fully offline on this device. Pairing with a Store Code lets another device
+              open the same customers, orders, rates, store details, and printer calibration. Each shop/franchise
+              should use its own separate code.
             </Text>
           </View>
 
@@ -152,7 +160,8 @@ export default function StoreSyncScreen() {
                 </TouchableOpacity>
                 <Text style={[styles.hint, { color: colors.mutedForeground }]}>
                   Enter this code on your other phone (Settings → Store Sync → Join Existing Store) to open the
-                  same shop data there.
+                  same shop data and printer calibration there. After changing calibration, use Pull Latest on the
+                  phone to load the newest settings.
                 </Text>
               </View>
 
@@ -189,8 +198,8 @@ export default function StoreSyncScreen() {
               <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.cardTitle, { color: colors.foreground }]}>Create a Store Code</Text>
                 <Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>
-                  Generates a new code for "{storeInfo.name}" and uploads this device's current data. Use this on
-                  the first/main phone for a shop.
+                  Generates a new code for "{storeInfo.name}" and uploads this device's current data and printer
+                  calibration. Create it on the computer, then enter it on the phone.
                 </Text>
                 <TouchableOpacity
                   style={[styles.primaryBtn, { backgroundColor: colors.primary }]}

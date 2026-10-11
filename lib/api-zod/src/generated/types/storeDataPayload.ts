@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PrinterCalibration } from './printerCalibration';
 import type { StoreDataPayloadGarmentRateOverrides } from './storeDataPayloadGarmentRateOverrides';
 import type { StoreDataPayloadStoreInfo } from './storeDataPayloadStoreInfo';
 import type { StoreDataPayloadTopUpRates } from './storeDataPayloadTopUpRates';
@@ -17,4 +18,5 @@ export interface StoreDataPayload {
   topUpRates: StoreDataPayloadTopUpRates;
   garmentRateOverrides: StoreDataPayloadGarmentRateOverrides;
   storeInfo: StoreDataPayloadStoreInfo;
+  printerCalibration?: PrinterCalibration;
 }

@@ -1,5 +1,7 @@
 import { Alert, Image, Platform } from 'react-native';
 import * as Print from 'expo-print';
+import { DEFAULT_PRINTER_CALIBRATION, normalizePrinterCalibration } from '@/constants/printerCalibration';
+import type { PrinterCalibration } from '@workspace/api-client-react';
 
 const SERVICE_ABBR: Record<string, string> = {
   'dry cleaning': 'DC', 'dry clean': 'DC', 'dc': 'DC',
@@ -44,12 +46,52 @@ function estimateTagRollHeightMm(
 }
 
 function estimateBillRollHeightMm(itemCount: number): number {
-  return Math.max(210, Math.min(600, 190 + itemCount * 7));
+  return Math.max(260, Math.min(700, 230 + itemCount * 12));
 }
 
 const PRINT_POINTS_PER_MM = 72 / 25.4;
 const TAG_WIDTH_MM = 38.1;
 const BILL_WIDTH_MM = 80;
+
+function getOffsetTransform(kind: 'tag' | 'bill', value: PrinterCalibration): string {
+  const calibration = normalizePrinterCalibration(value);
+  const x = kind === 'tag' ? calibration.tagOffsetXmm : calibration.billOffsetXmm;
+  const y = kind === 'tag' ? calibration.tagOffsetYmm : calibration.billOffsetYmm;
+  return `translate(${x}mm, ${y}mm)`;
+}
+
+async function dispatchPrint(
+  html: string,
+  widthMm: number,
+  heightMm: number,
+  isWeb: boolean,
+): Promise<boolean> {
+  if (isWeb) {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      window.alert('Printing was blocked by the browser. Allow pop-ups for this app and try again.');
+      return false;
+    }
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    window.setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 400);
+    return true;
+  }
+
+  await Print.printAsync({
+    html,
+    width: Math.round(widthMm * PRINT_POINTS_PER_MM),
+    height: Math.round(heightMm * PRINT_POINTS_PER_MM),
+    orientation: Print.Orientation.portrait,
+    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+  });
+  return true;
+}
 
 const DRYCU_LOGO_ASSET = require('../assets/images/drycu-logo.jpeg');
 
@@ -145,7 +187,11 @@ function extractCustomerDetailsDirectly() {
   };
 }
 
-export async function printTags(order: any, storeInfo: any): Promise<void> {
+export async function printTags(
+  order: any,
+  storeInfo: any,
+  printerCalibration: PrinterCalibration = DEFAULT_PRINTER_CALIBRATION,
+): Promise<void> {
   const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 
   try {
@@ -207,9 +253,8 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
 
           if (nameCand && nameCand.length < 30) {
             let qty = numericalTokens.length > 1 ? numericalTokens[0] : 1;
-            let svc = 'DC';
-            if (txt.toLowerCase().includes('laundry')) svc = 'LD';
-            else if (txt.toLowerCase().includes('iron')) svc = 'IR';
+            const serviceMatch = txt.match(/\b(dry\s+cleaning|dry\s+clean|laundry(?:\s+service)?|simple\s+(?:press|ironing)|steam\s+(?:press|ironing)|ironing|iron)\b/i);
+            const svc = serviceMatch ? getServiceName({ serviceType: serviceMatch[0] }) : 'SERVICE?';
 
             detectedItems.push({ name: nameCand.trim(), service: svc, qty: qty, price: 0 });
           }
@@ -233,7 +278,7 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
             <div class="order-id">${escapeHtml(orderNumber)}</div>
             <div class="cust-title">${escapeHtml(customerName)}</div>
             <div class="svc-row">
-            <span class="svc-code">${escapeHtml(item.service)}</span>
+            <span class="svc-code">${escapeHtml(getServiceName({ serviceType: item.service }))}</span>
               <span class="counter-ratio">${currentPieceIndex}/${totalPcs}</span>
             </div>
             <div class="info-row">Ready: ${readyDateStr}</div>
@@ -251,11 +296,11 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
       <head>
         <title>DRYCU-72H Tags</title>
         <style>
-          @page { size: 38.1mm auto; margin: 0; }
+          @page { size: 38.1mm ${tagRollHeightMm}mm; margin: 0; }
           * { box-sizing: border-box; font-weight: 900 !important; color: #000 !important; margin: 0; padding: 0; }
-          html, body { writing-mode: horizontal-tb; transform: none; }
+          html, body { writing-mode: horizontal-tb; }
           html { width: 100%; margin: 0; padding: 0; }
-          body { font-family: 'Courier New', Courier, monospace; width: 36mm; margin: 0 auto; padding: 3px 2px; background-color: #fff; }
+          body { font-family: 'Courier New', Courier, monospace; width: 36mm; margin: 0 auto; padding: 3px 2px; background-color: #fff; transform: ${getOffsetTransform('tag', printerCalibration)}; transform-origin: top center; }
           .tag-wrapper { width: 100%; text-align: left; padding: 2px 0; page-break-inside: avoid; display: block; }
           .brand { font-size: 11px; text-align: center; margin-bottom: 3px; }
           .order-id { font-size: 17px; font-weight: 900; line-height: 1.1; margin-bottom: 2px; }
@@ -270,32 +315,21 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
       </html>
     `;
 
-    if (isWeb) {
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.write(html);
-        win.document.close();
-        win.focus();
-        setTimeout(() => { win.print(); win.close(); }, 400);
-      }
-    } else {
-      await Print.printAsync({
-        html,
-        width: Math.round(TAG_WIDTH_MM * PRINT_POINTS_PER_MM),
-        height: Math.round(tagRollHeightMm * PRINT_POINTS_PER_MM),
-        orientation: Print.Orientation.portrait,
-        margins: { top: 0, right: 0, bottom: 0, left: 0 },
-      });
-    }
+    await dispatchPrint(html, TAG_WIDTH_MM, tagRollHeightMm, isWeb);
   } catch (err) {
     console.error(err);
-    if (!isWeb) {
-      Alert.alert('Printing unavailable', 'The device could not open its print service. Check that a printer or system print service is available.');
-    }
+    const message = 'The device could not open its print service. Check that a printer or system print service is available.';
+    if (isWeb) window.alert(`Printing unavailable\n\n${message}`);
+    else Alert.alert('Printing unavailable', message);
   }
 }
 
-export async function printBill(order: any, customer: any, storeInfo: any): Promise<void> {
+export async function printBill(
+  order: any,
+  customer: any,
+  storeInfo: any,
+  printerCalibration: PrinterCalibration = DEFAULT_PRINTER_CALIBRATION,
+): Promise<void> {
   const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 
   try {
@@ -431,11 +465,11 @@ export async function printBill(order: any, customer: any, storeInfo: any): Prom
       <head>
         <title>DRYCU-72H Invoice</title>
         <style>
-          @page { size: 80mm auto; margin: 0; }
+          @page { size: 80mm ${billRollHeightMm}mm; margin: 0; }
           * { box-sizing: border-box; font-weight: 900 !important; color: #000 !important; margin: 0; padding: 0; }
-          html, body { writing-mode: horizontal-tb; transform: none; }
+          html, body { writing-mode: horizontal-tb; }
           html { width: 100%; margin: 0; padding: 0; }
-          body { font-family: 'Courier New', Courier, monospace; width: 74mm; margin: 0 auto; padding: 5px 4px; font-size: 11px; line-height: 1.25; background-color: #fff; color: #000; }
+          body { font-family: 'Courier New', Courier, monospace; width: 74mm; margin: 0 auto; padding: 5px 4px; font-size: 11px; line-height: 1.25; background-color: #fff; color: #000; transform: ${getOffsetTransform('bill', printerCalibration)}; transform-origin: top center; }
           .center { text-align: center; }
           .bold { font-weight: 900; }
           .line { border-top: 2px solid #000; margin: 6px 0; }
@@ -509,29 +543,53 @@ export async function printBill(order: any, customer: any, storeInfo: any): Prom
       </body>
     </html>`;
 
-    if (isWeb) {
-      const win = window.open('', '_blank');
-      if (!win) {
-        window.alert('Printing was blocked by the browser. Allow pop-ups for this app and try again.');
-        return;
-      }
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      setTimeout(() => { win.print(); win.close(); }, 400);
-    } else {
-      await Print.printAsync({
-        html,
-        width: Math.round(BILL_WIDTH_MM * PRINT_POINTS_PER_MM),
-        height: Math.round(billRollHeightMm * PRINT_POINTS_PER_MM),
-        orientation: Print.Orientation.portrait,
-        margins: { top: 0, right: 0, bottom: 0, left: 0 },
-      });
-    }
+    await dispatchPrint(html, BILL_WIDTH_MM, billRollHeightMm, isWeb);
   } catch (err) {
     console.error('Failed to print bill:', err);
-    if (!isWeb) {
-      Alert.alert('Printing unavailable', 'The device could not open its print service. Check that a printer or system print service is available.');
-    }
+    const message = 'The device could not open its print service. Check that a printer or system print service is available.';
+    if (isWeb) window.alert(`Printing unavailable\n\n${message}`);
+    else Alert.alert('Printing unavailable', message);
+  }
+}
+
+export async function printCalibrationTest(
+  kind: 'tag' | 'bill',
+  printerCalibration: PrinterCalibration = DEFAULT_PRINTER_CALIBRATION,
+): Promise<void> {
+  const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
+  const widthMm = kind === 'tag' ? TAG_WIDTH_MM : BILL_WIDTH_MM;
+  const contentWidthMm = kind === 'tag' ? 36 : 74;
+  const heightMm = kind === 'tag' ? 60 : 90;
+  const transform = getOffsetTransform(kind, printerCalibration);
+  const html = `
+    <!doctype html>
+    <html><head><meta charset="utf-8"><title>${kind === 'tag' ? 'Tag' : 'Bill'} calibration test</title>
+    <style>
+      @page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; writing-mode: horizontal-tb; }
+      body { position: relative; width: ${contentWidthMm}mm; height: ${heightMm}mm; margin: 0 auto; padding: 2mm; font: 8pt Arial, sans-serif; color: #000; background: #fff; transform: ${transform}; transform-origin: top center; }
+      .frame { position: absolute; inset: 2mm; border: 0.25mm solid #000; }
+      .vertical { position: absolute; left: 50%; top: 2mm; bottom: 2mm; border-left: 0.2mm dashed #000; }
+      .horizontal { position: absolute; top: 50%; left: 2mm; right: 2mm; border-top: 0.2mm dashed #000; }
+      .target { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 16pt; font-weight: bold; }
+      .heading { position: absolute; top: 6mm; left: 4mm; right: 4mm; text-align: center; font-weight: bold; }
+      .footer { position: absolute; bottom: 6mm; left: 4mm; right: 4mm; text-align: center; }
+    </style></head>
+    <body>
+      <div class="frame"></div><div class="vertical"></div><div class="horizontal"></div>
+      <div class="target">+</div>
+      <div class="heading">${kind === 'tag' ? 'TAG 38.1 mm' : 'BILL 80 mm'} · ALIGNMENT TEST</div>
+      <div class="footer">Solid border = printable area · Dashed lines = center</div>
+    </body></html>
+  `;
+
+  try {
+    await dispatchPrint(html, widthMm, heightMm, isWeb);
+  } catch (error) {
+    console.error('Failed to print calibration test:', error);
+    const message = 'The device could not open its print service. Check that a printer or system print service is available.';
+    if (isWeb) window.alert(`Printing unavailable\n\n${message}`);
+    else Alert.alert('Printing unavailable', message);
   }
 }

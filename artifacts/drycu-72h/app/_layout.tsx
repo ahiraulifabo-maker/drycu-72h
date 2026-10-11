@@ -69,6 +69,10 @@ function RootLayoutNav() {
         name="settings/store-sync"
         options={{ title: "Store Sync" }}
       />
+      <Stack.Screen
+        name="settings/printer"
+        options={{ title: "Printer Calibration" }}
+      />
     </Stack>
   );
 }

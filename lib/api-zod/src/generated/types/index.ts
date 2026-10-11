@@ -9,6 +9,7 @@
 export * from './createStoreRequest';
 export * from './errorResponse';
 export * from './healthStatus';
+export * from './printerCalibration';
 export * from './storeDataPayload';
 export * from './storeDataPayloadGarmentRateOverrides';
 export * from './storeDataPayloadStoreInfo';

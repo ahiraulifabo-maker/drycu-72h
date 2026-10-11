@@ -25,6 +25,20 @@ export const CreateStoreBody = zod.object({
   "storeName": zod.string()
 })
 
+export const createStoreResponseOnePrinterCalibrationTagOffsetXmmMin = -10;
+export const createStoreResponseOnePrinterCalibrationTagOffsetXmmMax = 10;
+
+export const createStoreResponseOnePrinterCalibrationTagOffsetYmmMin = -10;
+export const createStoreResponseOnePrinterCalibrationTagOffsetYmmMax = 10;
+
+export const createStoreResponseOnePrinterCalibrationBillOffsetXmmMin = -10;
+export const createStoreResponseOnePrinterCalibrationBillOffsetXmmMax = 10;
+
+export const createStoreResponseOnePrinterCalibrationBillOffsetYmmMin = -10;
+export const createStoreResponseOnePrinterCalibrationBillOffsetYmmMax = 10;
+
+
+
 export const CreateStoreResponse = zod.object({
   "storeName": zod.string(),
   "customers": zod.array(zod.unknown()),
@@ -34,7 +48,13 @@ export const CreateStoreResponse = zod.object({
   "garmentRateOverrides": zod.record(zod.string(), zod.object({
 
 }).passthrough()),
-  "storeInfo": zod.record(zod.string(), zod.string())
+  "storeInfo": zod.record(zod.string(), zod.string()),
+  "printerCalibration": zod.object({
+  "tagOffsetXmm": zod.number().min(createStoreResponseOnePrinterCalibrationTagOffsetXmmMin).max(createStoreResponseOnePrinterCalibrationTagOffsetXmmMax),
+  "tagOffsetYmm": zod.number().min(createStoreResponseOnePrinterCalibrationTagOffsetYmmMin).max(createStoreResponseOnePrinterCalibrationTagOffsetYmmMax),
+  "billOffsetXmm": zod.number().min(createStoreResponseOnePrinterCalibrationBillOffsetXmmMin).max(createStoreResponseOnePrinterCalibrationBillOffsetXmmMax),
+  "billOffsetYmm": zod.number().min(createStoreResponseOnePrinterCalibrationBillOffsetYmmMin).max(createStoreResponseOnePrinterCalibrationBillOffsetYmmMax)
+}).optional()
 }).and(zod.object({
   "storeId": zod.string(),
   "updatedAt": zod.string()
@@ -48,6 +68,20 @@ export const GetStoreParams = zod.object({
   "storeId": zod.coerce.string()
 })
 
+export const getStoreResponseOnePrinterCalibrationTagOffsetXmmMin = -10;
+export const getStoreResponseOnePrinterCalibrationTagOffsetXmmMax = 10;
+
+export const getStoreResponseOnePrinterCalibrationTagOffsetYmmMin = -10;
+export const getStoreResponseOnePrinterCalibrationTagOffsetYmmMax = 10;
+
+export const getStoreResponseOnePrinterCalibrationBillOffsetXmmMin = -10;
+export const getStoreResponseOnePrinterCalibrationBillOffsetXmmMax = 10;
+
+export const getStoreResponseOnePrinterCalibrationBillOffsetYmmMin = -10;
+export const getStoreResponseOnePrinterCalibrationBillOffsetYmmMax = 10;
+
+
+
 export const GetStoreResponse = zod.object({
   "storeName": zod.string(),
   "customers": zod.array(zod.unknown()),
@@ -57,7 +91,13 @@ export const GetStoreResponse = zod.object({
   "garmentRateOverrides": zod.record(zod.string(), zod.object({
 
 }).passthrough()),
-  "storeInfo": zod.record(zod.string(), zod.string())
+  "storeInfo": zod.record(zod.string(), zod.string()),
+  "printerCalibration": zod.object({
+  "tagOffsetXmm": zod.number().min(getStoreResponseOnePrinterCalibrationTagOffsetXmmMin).max(getStoreResponseOnePrinterCalibrationTagOffsetXmmMax),
+  "tagOffsetYmm": zod.number().min(getStoreResponseOnePrinterCalibrationTagOffsetYmmMin).max(getStoreResponseOnePrinterCalibrationTagOffsetYmmMax),
+  "billOffsetXmm": zod.number().min(getStoreResponseOnePrinterCalibrationBillOffsetXmmMin).max(getStoreResponseOnePrinterCalibrationBillOffsetXmmMax),
+  "billOffsetYmm": zod.number().min(getStoreResponseOnePrinterCalibrationBillOffsetYmmMin).max(getStoreResponseOnePrinterCalibrationBillOffsetYmmMax)
+}).optional()
 }).and(zod.object({
   "storeId": zod.string(),
   "updatedAt": zod.string()
@@ -71,6 +111,20 @@ export const PushStoreParams = zod.object({
   "storeId": zod.coerce.string()
 })
 
+export const pushStoreBodyPrinterCalibrationTagOffsetXmmMin = -10;
+export const pushStoreBodyPrinterCalibrationTagOffsetXmmMax = 10;
+
+export const pushStoreBodyPrinterCalibrationTagOffsetYmmMin = -10;
+export const pushStoreBodyPrinterCalibrationTagOffsetYmmMax = 10;
+
+export const pushStoreBodyPrinterCalibrationBillOffsetXmmMin = -10;
+export const pushStoreBodyPrinterCalibrationBillOffsetXmmMax = 10;
+
+export const pushStoreBodyPrinterCalibrationBillOffsetYmmMin = -10;
+export const pushStoreBodyPrinterCalibrationBillOffsetYmmMax = 10;
+
+
+
 export const PushStoreBody = zod.object({
   "storeName": zod.string(),
   "customers": zod.array(zod.unknown()),
@@ -80,8 +134,28 @@ export const PushStoreBody = zod.object({
   "garmentRateOverrides": zod.record(zod.string(), zod.object({
 
 }).passthrough()),
-  "storeInfo": zod.record(zod.string(), zod.string())
+  "storeInfo": zod.record(zod.string(), zod.string()),
+  "printerCalibration": zod.object({
+  "tagOffsetXmm": zod.number().min(pushStoreBodyPrinterCalibrationTagOffsetXmmMin).max(pushStoreBodyPrinterCalibrationTagOffsetXmmMax),
+  "tagOffsetYmm": zod.number().min(pushStoreBodyPrinterCalibrationTagOffsetYmmMin).max(pushStoreBodyPrinterCalibrationTagOffsetYmmMax),
+  "billOffsetXmm": zod.number().min(pushStoreBodyPrinterCalibrationBillOffsetXmmMin).max(pushStoreBodyPrinterCalibrationBillOffsetXmmMax),
+  "billOffsetYmm": zod.number().min(pushStoreBodyPrinterCalibrationBillOffsetYmmMin).max(pushStoreBodyPrinterCalibrationBillOffsetYmmMax)
+}).optional()
 })
+
+export const pushStoreResponseOnePrinterCalibrationTagOffsetXmmMin = -10;
+export const pushStoreResponseOnePrinterCalibrationTagOffsetXmmMax = 10;
+
+export const pushStoreResponseOnePrinterCalibrationTagOffsetYmmMin = -10;
+export const pushStoreResponseOnePrinterCalibrationTagOffsetYmmMax = 10;
+
+export const pushStoreResponseOnePrinterCalibrationBillOffsetXmmMin = -10;
+export const pushStoreResponseOnePrinterCalibrationBillOffsetXmmMax = 10;
+
+export const pushStoreResponseOnePrinterCalibrationBillOffsetYmmMin = -10;
+export const pushStoreResponseOnePrinterCalibrationBillOffsetYmmMax = 10;
+
+
 
 export const PushStoreResponse = zod.object({
   "storeName": zod.string(),
@@ -92,7 +166,13 @@ export const PushStoreResponse = zod.object({
   "garmentRateOverrides": zod.record(zod.string(), zod.object({
 
 }).passthrough()),
-  "storeInfo": zod.record(zod.string(), zod.string())
+  "storeInfo": zod.record(zod.string(), zod.string()),
+  "printerCalibration": zod.object({
+  "tagOffsetXmm": zod.number().min(pushStoreResponseOnePrinterCalibrationTagOffsetXmmMin).max(pushStoreResponseOnePrinterCalibrationTagOffsetXmmMax),
+  "tagOffsetYmm": zod.number().min(pushStoreResponseOnePrinterCalibrationTagOffsetYmmMin).max(pushStoreResponseOnePrinterCalibrationTagOffsetYmmMax),
+  "billOffsetXmm": zod.number().min(pushStoreResponseOnePrinterCalibrationBillOffsetXmmMin).max(pushStoreResponseOnePrinterCalibrationBillOffsetXmmMax),
+  "billOffsetYmm": zod.number().min(pushStoreResponseOnePrinterCalibrationBillOffsetYmmMin).max(pushStoreResponseOnePrinterCalibrationBillOffsetYmmMax)
+}).optional()
 }).and(zod.object({
   "storeId": zod.string(),
   "updatedAt": zod.string()

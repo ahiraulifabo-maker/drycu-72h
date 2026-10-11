@@ -622,6 +622,18 @@ export default function AdminScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* ── 4c. Printer Calibration ── */}
+      <SectionHeader icon="print-outline" title="Printing" />
+      <TouchableOpacity
+        style={[ss.rateCard, { backgroundColor: colors.card, borderColor: colors.primary, marginHorizontal: 16, marginTop: -4, marginBottom: 16 }]}
+        onPress={() => router.push('/settings/printer')}
+      >
+        <Ionicons name="print-outline" size={28} color={colors.primary} />
+        <Text style={[ss.rateCardTitle, { color: colors.foreground }]}>Printer Calibration</Text>
+        <Text style={[ss.rateCardSub, { color: colors.mutedForeground }]}>Align 80 mm bills and 38.1 mm garment tags</Text>
+        <Text style={[ss.rateCardArrow, { color: colors.primary }]}>Open →</Text>
+      </TouchableOpacity>
+
       {/* ── 4b. Multi-Device Sync ── */}
       <SectionHeader icon="sync-outline" title="Multi-Device Sync" />
       <TouchableOpacity

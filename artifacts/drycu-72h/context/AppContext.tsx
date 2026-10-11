@@ -5,6 +5,8 @@ import { createStore, getStore, pushStore } from '@workspace/api-client-react';
 import { DEFAULT_TOPUP_SERVICES, TOPUP_STORAGE_KEY } from '@/constants/topup';
 import { GarmentRate } from '@/constants/rates';
 import { STORE_INFO as DEFAULT_STORE_INFO } from '@/constants/storeInfo';
+import { DEFAULT_PRINTER_CALIBRATION, normalizePrinterCalibration } from '@/constants/printerCalibration';
+import type { PrinterCalibration } from '@workspace/api-client-react';
 import { Customer, DiscountType, Order, OrderItem, OrderStatus, OrderTopUp, PickupMode, ServiceType } from '@/types';
 
 const STORAGE_KEYS = {
@@ -14,6 +16,7 @@ const STORAGE_KEYS = {
   GARMENT_RATES:'drycu_garment_rates',
   STORE_INFO:   'drycu_store_info',
   STORE_ID:     'drycu_store_id',
+  PRINTER_CALIBRATION: 'drycu_printer_calibration',
 };
 
 export type SyncStatus = 'idle' | 'syncing' | 'error';
@@ -37,6 +40,8 @@ interface AppContextType {
   topUpRates:           Record<string, number>;
   garmentRateOverrides: Record<string, Partial<GarmentRate>>;
   storeInfo:            StoreInfoData;
+  printerCalibration:   PrinterCalibration;
+  updatePrinterCalibration: (changes: Partial<PrinterCalibration>) => Promise<void>;
 
   // Multi-device sync — pairs this device to a shop's data by a shareable
   // code. See context comment above `createNewStore` for how it works.
@@ -123,6 +128,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [topUpRates,           setTopUpRates]           = useState<Record<string, number>>(buildDefaultTopUpRates());
   const [garmentRateOverrides, setGarmentRateOverrides] = useState<Record<string, Partial<GarmentRate>>>({});
   const [storeInfo,            setStoreInfo]            = useState<StoreInfoData>({ ...DEFAULT_STORE_INFO });
+  const [printerCalibration,   setPrinterCalibration]   = useState<PrinterCalibration>({ ...DEFAULT_PRINTER_CALIBRATION });
+  const printerCalibrationRef = useRef<PrinterCalibration>({ ...DEFAULT_PRINTER_CALIBRATION });
 
   const [storeId,      setStoreId]      = useState<string | null>(null);
   const [syncStatus,   setSyncStatus]   = useState<SyncStatus>('idle');
@@ -135,7 +142,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [c, o, d, t, g, si, sid] = await Promise.all([
+        const [c, o, d, t, g, si, sid, pc] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.CUSTOMERS),
           AsyncStorage.getItem(STORAGE_KEYS.ORDERS),
           AsyncStorage.getItem(STORAGE_KEYS.NEXT_DI),
@@ -143,6 +150,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(STORAGE_KEYS.GARMENT_RATES),
           AsyncStorage.getItem(STORAGE_KEYS.STORE_INFO),
           AsyncStorage.getItem(STORAGE_KEYS.STORE_ID),
+          AsyncStorage.getItem(STORAGE_KEYS.PRINTER_CALIBRATION),
         ]);
         if (c)  setCustomers(JSON.parse(c));
         if (o)  setOrders(JSON.parse(o));
@@ -160,6 +168,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             savedInfo.tagline = 'Clean. Fast. You.';
           }
           setStoreInfo(savedInfo);
+        }
+        if (pc) {
+          let savedCalibration = { ...DEFAULT_PRINTER_CALIBRATION };
+          try {
+            savedCalibration = normalizePrinterCalibration(JSON.parse(pc));
+          } catch {
+            await AsyncStorage.removeItem(STORAGE_KEYS.PRINTER_CALIBRATION);
+          }
+          printerCalibrationRef.current = savedCalibration;
+          setPrinterCalibration(savedCalibration);
         }
         if (sid) {
           setStoreId(sid);
@@ -218,6 +236,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEYS.STORE_INFO, JSON.stringify(updated));
   };
 
+  const updatePrinterCalibration = async (changes: Partial<PrinterCalibration>) => {
+    const updated = normalizePrinterCalibration({ ...printerCalibrationRef.current, ...changes });
+    printerCalibrationRef.current = updated;
+    setPrinterCalibration(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.PRINTER_CALIBRATION, JSON.stringify(updated));
+  };
+
   // ── Multi-device sync ──────────────────────────────────────────────────
   // Whole-document sync: the entire local state is pushed as one JSON blob
   // to /api/stores/:storeId, and pulling overwrites local state with the
@@ -232,6 +257,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     topUpRates: Record<string, number>;
     garmentRateOverrides: Record<string, Partial<GarmentRate>>;
     storeInfo: StoreInfoData;
+    printerCalibration: PrinterCalibration;
   };
 
   // Single-flight push queue: on a flaky connection two overlapping PUTs
@@ -255,6 +281,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         topUpRates: snapshot.topUpRates,
         garmentRateOverrides: snapshot.garmentRateOverrides,
         storeInfo: snapshot.storeInfo as unknown as Record<string, string>,
+        printerCalibration: snapshot.printerCalibration,
       });
       setLastSyncedAt(row.updatedAt);
       setSyncStatus('idle');
@@ -291,21 +318,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (skipNextPush.current) { skipNextPush.current = false; return; }
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {
-      pushToServer(storeId, { customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo });
+      pushToServer(storeId, { customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo, printerCalibration });
     }, 1500);
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo, storeId, isLoaded]);
+  }, [customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo, printerCalibration, storeId, isLoaded]);
 
   const applyRemoteSnapshot = async (row: {
     storeId: string; updatedAt: string; customers: unknown; orders: unknown;
     nextDI: number; topUpRates: Record<string, number>;
     garmentRateOverrides: Record<string, unknown>; storeInfo: Record<string, string>;
+    printerCalibration?: PrinterCalibration;
   }) => {
     const remoteCustomers = row.customers as Customer[];
     const remoteOrders = row.orders as Order[];
     const remoteGarmentRates = row.garmentRateOverrides as Record<string, Partial<GarmentRate>>;
     const remoteStoreInfo = { ...DEFAULT_STORE_INFO, ...row.storeInfo } as StoreInfoData;
+    const remotePrinterCalibration = normalizePrinterCalibration(row.printerCalibration);
 
     setCustomers(remoteCustomers);
     setOrders(remoteOrders);
@@ -313,6 +342,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTopUpRates({ ...buildDefaultTopUpRates(), ...row.topUpRates });
     setGarmentRateOverrides(remoteGarmentRates);
     setStoreInfo(remoteStoreInfo);
+    printerCalibrationRef.current = remotePrinterCalibration;
+    setPrinterCalibration(remotePrinterCalibration);
     setStoreId(row.storeId);
     setLastSyncedAt(row.updatedAt);
     skipNextPush.current = true;
@@ -324,6 +355,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(TOPUP_STORAGE_KEY, JSON.stringify({ ...buildDefaultTopUpRates(), ...row.topUpRates })),
       AsyncStorage.setItem(STORAGE_KEYS.GARMENT_RATES, JSON.stringify(remoteGarmentRates)),
       AsyncStorage.setItem(STORAGE_KEYS.STORE_INFO, JSON.stringify(remoteStoreInfo)),
+      AsyncStorage.setItem(STORAGE_KEYS.PRINTER_CALIBRATION, JSON.stringify(remotePrinterCalibration)),
       AsyncStorage.setItem(STORAGE_KEYS.STORE_ID, row.storeId),
     ]);
   };
@@ -335,7 +367,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setStoreId(row.storeId);
     setLastSyncedAt(row.updatedAt);
     await AsyncStorage.setItem(STORAGE_KEYS.STORE_ID, row.storeId);
-    await pushToServer(row.storeId, { customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo });
+    await pushToServer(row.storeId, { customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo, printerCalibration });
     return row.storeId;
   };
 
@@ -506,12 +538,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTopUpRates(buildDefaultTopUpRates());
     setGarmentRateOverrides({});
     setStoreInfo({ ...DEFAULT_STORE_INFO });
+    printerCalibrationRef.current = { ...DEFAULT_PRINTER_CALIBRATION };
+    setPrinterCalibration({ ...DEFAULT_PRINTER_CALIBRATION });
     await AsyncStorage.multiRemove([
       STORAGE_KEYS.CUSTOMERS,
       STORAGE_KEYS.ORDERS,
       STORAGE_KEYS.NEXT_DI,
       STORAGE_KEYS.GARMENT_RATES,
       STORAGE_KEYS.STORE_INFO,
+      STORAGE_KEYS.PRINTER_CALIBRATION,
       TOPUP_STORAGE_KEY,
     ]);
   };
@@ -524,10 +559,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      customers, orders, nextDI, isLoaded, topUpRates, garmentRateOverrides, storeInfo,
+      customers, orders, nextDI, isLoaded, topUpRates, garmentRateOverrides, storeInfo, printerCalibration,
       storeId, syncStatus, lastSyncedAt, createNewStore, joinStore, pullLatest, leaveStore,
       addCustomer, updateCustomer, deleteCustomer, findDuplicate, searchCustomers, getCustomer,
-      updateTopUpRate, updateTopUpRates, updateGarmentRate, resetGarmentRate, updateStoreInfo,
+      updateTopUpRate, updateTopUpRates, updateGarmentRate, resetGarmentRate, updateStoreInfo, updatePrinterCalibration,
       addOrder, updateOrder, updateOrderStatus, deleteOrder,
       deleteAllOrders, deleteAllCustomers, factoryReset,
       getOrdersForCustomer, getOrder,

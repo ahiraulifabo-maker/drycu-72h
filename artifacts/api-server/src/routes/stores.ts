@@ -6,6 +6,38 @@ import {
   PushStoreBody,
 } from "@workspace/api-zod";
 
+type PrinterCalibrationData = {
+  tagOffsetXmm: number;
+  tagOffsetYmm: number;
+  billOffsetXmm: number;
+  billOffsetYmm: number;
+};
+
+const DEFAULT_PRINTER_CALIBRATION: PrinterCalibrationData = {
+  tagOffsetXmm: 0,
+  tagOffsetYmm: 0,
+  billOffsetXmm: 0,
+  billOffsetYmm: 0,
+};
+
+function normalizePrinterCalibration(value: unknown): PrinterCalibrationData {
+  const input = value && typeof value === "object"
+    ? value as Partial<PrinterCalibrationData>
+    : {};
+  const offset = (raw: unknown) => {
+    const numeric = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.max(-10, Math.min(10, numeric));
+  };
+
+  return {
+    tagOffsetXmm: offset(input.tagOffsetXmm),
+    tagOffsetYmm: offset(input.tagOffsetYmm),
+    billOffsetXmm: offset(input.billOffsetXmm),
+    billOffsetYmm: offset(input.billOffsetYmm),
+  };
+}
+
 // Express does not forward rejected promises from async handlers to the
 // error middleware by default — this wrapper does, so ZodErrors and DB
 // errors reach the global 400/500 handler instead of crashing the process.
@@ -32,6 +64,9 @@ function generateStoreCode(): string {
 }
 
 function toResponse(row: typeof storeDataTable.$inferSelect) {
+  const rawStoreInfo = row.storeInfo as Record<string, unknown>;
+  const { printerCalibration, ...storeInfo } = rawStoreInfo;
+
   return {
     storeId: row.storeId,
     storeName: row.storeName,
@@ -40,7 +75,8 @@ function toResponse(row: typeof storeDataTable.$inferSelect) {
     nextDI: row.nextDi,
     topUpRates: row.topUpRates,
     garmentRateOverrides: row.garmentRateOverrides,
-    storeInfo: row.storeInfo,
+    storeInfo,
+    printerCalibration: normalizePrinterCalibration(printerCalibration),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -68,7 +104,7 @@ router.post("/stores", asyncHandler(async (req, res) => {
       nextDi: 1,
       topUpRates: {},
       garmentRateOverrides: {},
-      storeInfo: {},
+      storeInfo: { printerCalibration: DEFAULT_PRINTER_CALIBRATION },
     })
     .returning();
 
@@ -102,6 +138,11 @@ router.put("/stores/:storeId", asyncHandler(async (req, res) => {
     return;
   }
 
+  const existingStoreInfo = existing.storeInfo as Record<string, unknown>;
+  const printerCalibration = normalizePrinterCalibration(
+    body.printerCalibration ?? existingStoreInfo.printerCalibration,
+  );
+
   const [row] = await db
     .update(storeDataTable)
     .set({
@@ -111,7 +152,10 @@ router.put("/stores/:storeId", asyncHandler(async (req, res) => {
       nextDi: body.nextDI,
       topUpRates: body.topUpRates,
       garmentRateOverrides: body.garmentRateOverrides,
-      storeInfo: body.storeInfo,
+      storeInfo: {
+        ...body.storeInfo,
+        printerCalibration,
+      },
       updatedAt: new Date(),
     })
     .where(eq(storeDataTable.storeId, storeId))

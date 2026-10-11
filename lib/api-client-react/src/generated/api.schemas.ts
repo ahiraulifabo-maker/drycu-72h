@@ -19,6 +19,29 @@ export type StoreDataPayloadGarmentRateOverrides = {[key: string]: { [key: strin
 
 export type StoreDataPayloadStoreInfo = {[key: string]: string};
 
+export interface PrinterCalibration {
+  /**
+     * @minimum -10
+     * @maximum 10
+     */
+  tagOffsetXmm: number;
+  /**
+     * @minimum -10
+     * @maximum 10
+     */
+  tagOffsetYmm: number;
+  /**
+     * @minimum -10
+     * @maximum 10
+     */
+  billOffsetXmm: number;
+  /**
+     * @minimum -10
+     * @maximum 10
+     */
+  billOffsetYmm: number;
+}
+
 export interface StoreDataPayload {
   storeName: string;
   customers: unknown[];
@@ -27,6 +50,7 @@ export interface StoreDataPayload {
   topUpRates: StoreDataPayloadTopUpRates;
   garmentRateOverrides: StoreDataPayloadGarmentRateOverrides;
   storeInfo: StoreDataPayloadStoreInfo;
+  printerCalibration?: PrinterCalibration;
 }
 
 export type StoreDataResponse = StoreDataPayload & {

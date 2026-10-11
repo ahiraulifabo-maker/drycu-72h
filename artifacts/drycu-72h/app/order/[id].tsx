@@ -251,7 +251,7 @@ function BillLayout({ order, customerName, customerMobile, customerAddress, stor
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
-  const { getOrder, getCustomer, updateOrderStatus, deleteOrder, storeInfo } = useApp();
+  const { getOrder, getCustomer, updateOrderStatus, deleteOrder, storeInfo, printerCalibration } = useApp();
   const order = getOrder(id);
   const [activeTab, setActiveTab] = useState<'details' | 'tag' | 'bill'>('details');
 
@@ -383,7 +383,7 @@ Thank you for choosing DRYCU-72H! ${storeInfo.website}`;
                   style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.primary }]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    printTags(order, storeInfo);
+                    void printTags(order, storeInfo, printerCalibration);
                   }}
                 >
                   <Ionicons name="pricetag" size={28} color={colors.primary} />
@@ -394,7 +394,7 @@ Thank you for choosing DRYCU-72H! ${storeInfo.website}`;
                   style={[styles.printCard, { backgroundColor: colors.card, borderColor: colors.accent }]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    printBill(order, customer, storeInfo);
+                    void printBill(order, customer, storeInfo, printerCalibration);
                   }}
                 >
                   <Ionicons name="document-text" size={28} color={colors.accent} />

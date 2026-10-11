@@ -133,6 +133,8 @@ components:
           type: object
           additionalProperties:
             type: string
+        printerCalibration:
+          $ref: "#/components/schemas/PrinterCalibration"
       required:
         - storeName
         - customers
@@ -141,6 +143,30 @@ components:
         - topUpRates
         - garmentRateOverrides
         - storeInfo
+    PrinterCalibration:
+      type: object
+      properties:
+        tagOffsetXmm:
+          type: number
+          minimum: -10
+          maximum: 10
+        tagOffsetYmm:
+          type: number
+          minimum: -10
+          maximum: 10
+        billOffsetXmm:
+          type: number
+          minimum: -10
+          maximum: 10
+        billOffsetYmm:
+          type: number
+          minimum: -10
+          maximum: 10
+      required:
+        - tagOffsetXmm
+        - tagOffsetYmm
+        - billOffsetXmm
+        - billOffsetYmm
     StoreDataResponse:
       allOf:
         - $ref: "#/components/schemas/StoreDataPayload"
