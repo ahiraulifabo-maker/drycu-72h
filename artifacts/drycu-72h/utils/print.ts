@@ -2,9 +2,54 @@ import { Alert, Image, Platform } from 'react-native';
 import * as Print from 'expo-print';
 
 const SERVICE_ABBR: Record<string, string> = {
-  'Dry Cleaning': 'DC', 'Laundry': 'LD', 'Ironing': 'IR', 'Top Up': 'TP', 'Topup': 'TP',
-  'DC': 'DC', 'LD': 'LD', 'IR': 'IR', 'TP': 'TP'
+  'dry cleaning': 'DC', 'dry clean': 'DC', 'dc': 'DC',
+  'laundry': 'LAU', 'laundry service': 'LAU', 'lau': 'LAU', 'ld': 'LAU',
+  'simple press': 'SP', 'simple ironing': 'SP', 'sp': 'SP',
+  'steam press': 'STP', 'steam ironing': 'STP', 'stp': 'STP',
+  'ironing': 'IR', 'iron': 'IR', 'ir': 'IR',
+  'top up': 'TP', 'topup': 'TP', 'tp': 'TP',
 };
+
+const SERVICE_NAMES: Record<string, string> = {
+  DC: 'DRY CLEANING',
+  LAU: 'LAUNDRY',
+  SP: 'SIMPLE PRESS',
+  STP: 'STEAM PRESS',
+  IR: 'IRONING',
+  TP: 'TOP-UP',
+};
+
+function getServiceCode(item: any): string {
+  const rawService = item?.serviceType ?? item?.service ?? item?.serviceName ?? item?.serviceLabel ?? '';
+  const normalized = String(rawService).trim().toLowerCase().replace(/\s+/g, ' ');
+  return SERVICE_ABBR[normalized] ?? (normalized ? String(rawService).trim().toUpperCase() : 'SERVICE?');
+}
+
+function getServiceName(item: any): string {
+  const code = getServiceCode(item);
+  return SERVICE_NAMES[code] ?? code;
+}
+
+function estimateTagRollHeightMm(
+  items: Array<{ name: string; qty: number }>,
+  customerName: string,
+): number {
+  const customerLines = Math.max(1, Math.ceil(customerName.length / 24));
+  const height = items.reduce((total, item) => {
+    const itemLines = Math.max(1, Math.ceil(item.name.length / 24));
+    const oneTagHeight = 35 + (customerLines - 1) * 4 + (itemLines - 1) * 4;
+    return total + Math.max(0, item.qty) * (oneTagHeight + 3);
+  }, 0);
+  return Math.max(45, Math.ceil(height + 6));
+}
+
+function estimateBillRollHeightMm(itemCount: number): number {
+  return Math.max(210, Math.min(600, 190 + itemCount * 7));
+}
+
+const PRINT_POINTS_PER_MM = 72 / 25.4;
+const TAG_WIDTH_MM = 38.1;
+const BILL_WIDTH_MM = 80;
 
 const DRYCU_LOGO_ASSET = require('../assets/images/drycu-logo.jpeg');
 
@@ -126,7 +171,7 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
       stateItems.forEach((item: any) => {
         detectedItems.push({
           name: item.name || item.itemName || 'Garment',
-          service: SERVICE_ABBR[item.service] || item.service || 'DC',
+          service: getServiceName(item),
           qty: Number(item.qty || item.quantity || 1),
           price: Number(item.price !== undefined ? item.price : (item.rate || item.customPrice || 0))
         });
@@ -173,6 +218,7 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
     }
 
     const totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
+    const tagRollHeightMm = estimateTagRollHeightMm(detectedItems, customerName);
     const bookedDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
     const readyDateStr = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
 
@@ -187,7 +233,7 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
             <div class="order-id">${escapeHtml(orderNumber)}</div>
             <div class="cust-title">${escapeHtml(customerName)}</div>
             <div class="svc-row">
-              <span class="svc-code">${item.service}</span>
+            <span class="svc-code">${escapeHtml(item.service)}</span>
               <span class="counter-ratio">${currentPieceIndex}/${totalPcs}</span>
             </div>
             <div class="info-row">Ready: ${readyDateStr}</div>
@@ -215,6 +261,7 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
           .order-id { font-size: 17px; font-weight: 900; line-height: 1.1; margin-bottom: 2px; }
           .cust-title { font-size: 11px; font-weight: 900; line-height: 1.2; margin-bottom: 3px; overflow-wrap: anywhere; }
           .svc-row { display: flex; justify-content: space-between; font-size: 11px; font-weight: 900; margin-bottom: 3px; width: 100%; }
+          .svc-code { text-transform: uppercase; }
           .info-row { font-size: 10px; font-weight: 900; line-height: 1.25; margin-bottom: 1px; overflow-wrap: anywhere; }
           .dashed-separator { font-size: 9px; font-weight: 900; white-space: nowrap; margin-top: 4px; margin-bottom: 5px; overflow: hidden; }
         </style>
@@ -234,7 +281,8 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
     } else {
       await Print.printAsync({
         html,
-        width: 144,
+        width: Math.round(TAG_WIDTH_MM * PRINT_POINTS_PER_MM),
+        height: Math.round(tagRollHeightMm * PRINT_POINTS_PER_MM),
         orientation: Print.Orientation.portrait,
         margins: { top: 0, right: 0, bottom: 0, left: 0 },
       });
@@ -250,6 +298,7 @@ export async function printTags(order: any, storeInfo: any): Promise<void> {
 export async function printBill(order: any, customer: any, storeInfo: any): Promise<void> {
   const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 
+  try {
 
     const globalOrder = isWeb
       ? (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {}
@@ -281,7 +330,7 @@ export async function printBill(order: any, customer: any, storeInfo: any): Prom
         const unitPrice = Number(item.price !== undefined ? item.price : (item.rate || item.ratePerUnit || item.customPrice || 0));
         detectedItems.push({
           name: item.name || item.itemName || 'Garment',
-          service: SERVICE_ABBR[item.service] || SERVICE_ABBR[item.serviceType] || item.service || item.serviceType || 'DC',
+          service: getServiceCode(item),
           qty,
           kg: Number(item.kg || 0),
           price: Number(item.subtotal !== undefined ? item.subtotal : unitPrice * qty)
@@ -357,6 +406,7 @@ export async function printBill(order: any, customer: any, storeInfo: any): Prom
     let balance = netPayable - advance;
     let totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
     let totalKg = detectedItems.reduce((acc, curr) => acc + curr.kg, 0);
+    const billRollHeightMm = estimateBillRollHeightMm(detectedItems.length);
 
     let rowsHtml = '';
     detectedItems.forEach((item) => {
@@ -458,24 +508,30 @@ export async function printBill(order: any, customer: any, storeInfo: any): Prom
         </div>
       </body>
     </html>`;
-    };
 
-// Export the bill printing trigger function
-export const handlePrintBill = async (billHtml?: string) => {
-  try {
-    if (Platform.OS === 'web') {
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(billHtml || '<h1>No Bill Data</h1>');
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
-        printWindow.close();
+    if (isWeb) {
+      const win = window.open('', '_blank');
+      if (!win) {
+        window.alert('Printing was blocked by the browser. Allow pop-ups for this app and try again.');
+        return;
       }
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => { win.print(); win.close(); }, 400);
     } else {
-      await Print.printAsync({ html: billHtml || '' });
+      await Print.printAsync({
+        html,
+        width: Math.round(BILL_WIDTH_MM * PRINT_POINTS_PER_MM),
+        height: Math.round(billRollHeightMm * PRINT_POINTS_PER_MM),
+        orientation: Print.Orientation.portrait,
+        margins: { top: 0, right: 0, bottom: 0, left: 0 },
+      });
     }
-  } catch (error) {
-    console.error("Failed to print bill:", error);
+  } catch (err) {
+    console.error('Failed to print bill:', err);
+    if (!isWeb) {
+      Alert.alert('Printing unavailable', 'The device could not open its print service. Check that a printer or system print service is available.');
+    }
   }
-};
+}
