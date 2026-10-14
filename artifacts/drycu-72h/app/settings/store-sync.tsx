@@ -144,23 +144,17 @@ export default function StoreSyncScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <View style={[styles.infoCard, { backgroundColor: colors.secondary, borderColor: colors.primary }]}>
-            <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
-            <Text style={[styles.infoText, { color: colors.primary }]}>
-              The app normally works fully offline on this device. Pairing with a Store Code lets another device
-              open the same customers, orders, rates, store details, and printer calibration. Each shop/franchise
-              should use its own separate code.
-            </Text>
-          </View>
-
           {createdCode || storeId ? (
             <>
               <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.cardTitle, { color: colors.foreground }]}>
                   {createdCode ? 'Store Code Generated' : "This Store's Code"}
                 </Text>
-                <Text style={[styles.code, { color: colors.foreground }]}>{createdCode ?? storeId}</Text>
+                <Text testID="store-sync-code" selectable style={[styles.code, { color: colors.foreground }]}>
+                  {createdCode ?? storeId}
+                </Text>
                 <TouchableOpacity
+                  testID="copy-store-sync-code"
                   style={[styles.copyBtn, { backgroundColor: copied ? colors.accent : colors.primary }]}
                   onPress={handleCopy}
                 >
@@ -211,6 +205,8 @@ export default function StoreSyncScreen() {
                   calibration. Create it on the computer, then enter it on the phone.
                 </Text>
                 <TouchableOpacity
+                  testID="create-store-sync-code"
+                  accessibilityRole="button"
                   style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
                   onPress={handleCreate}
                   disabled={busy}
@@ -253,8 +249,63 @@ export default function StoreSyncScreen() {
               </View>
             </>
           )}
+
+          <View style={[styles.infoCard, { backgroundColor: colors.secondary, borderColor: colors.primary }]}>
+            <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
+            <Text style={[styles.infoText, { color: colors.primary }]}>
+              The app normally works fully offline on this device. Pairing with a Store Code lets another device
+              open the same customers, orders, rates, store details, and printer calibration. Each shop/franchise
+              should use its own separate code.
+            </Text>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <Modal
+        visible={createdCode !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCreatedCode(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.codeModal, { backgroundColor: colors.card, borderColor: colors.primary }]}>
+            <View style={[styles.codeSuccessIcon, { backgroundColor: colors.secondary }]}>
+              <Ionicons name="checkmark-circle" size={30} color={colors.primary} />
+            </View>
+            <Text style={[styles.cardTitle, styles.codeModalTitle, { color: colors.foreground }]}>
+              Your Store Sync Code
+            </Text>
+            <Text
+              testID="generated-store-sync-code"
+              selectable
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              style={[styles.codeModalValue, { color: colors.foreground, backgroundColor: colors.muted }]}
+            >
+              {createdCode}
+            </Text>
+            <Text style={[styles.cardDesc, styles.codeModalHint, { color: colors.mutedForeground }]}>
+              This code is saved on this screen too. Enter it on your phone under Settings → Store Sync → Join Existing Store.
+            </Text>
+            <TouchableOpacity
+              testID="copy-generated-store-sync-code"
+              accessibilityRole="button"
+              accessibilityLabel="Copy Store Sync code"
+              style={[styles.copyBtn, { backgroundColor: copied ? colors.accent : colors.primary }]}
+              onPress={handleCopy}
+            >
+              <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color="#fff" />
+              <Text style={styles.copyBtnText}>{copied ? 'Copied' : 'Copy Code'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              style={styles.codeModalDone}
+              onPress={() => setCreatedCode(null)}
+            >
+              <Text style={[styles.codeModalDoneText, { color: colors.primary }]}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <Modal
         visible={confirmation !== null}
         transparent
@@ -302,6 +353,13 @@ const styles = StyleSheet.create({
   code: { fontSize: 28, fontFamily: 'Inter_700Bold', letterSpacing: 1.5, marginTop: 2 },
   copyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, marginTop: 4 },
   copyBtnText: { color: '#fff', fontSize: 14, fontFamily: 'Inter_700Bold' },
+  codeModal: { width: '100%', maxWidth: 460, alignSelf: 'center', borderRadius: 18, borderWidth: 1.5, padding: 22, gap: 14, alignItems: 'stretch' },
+  codeSuccessIcon: { width: 56, height: 56, borderRadius: 28, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
+  codeModalTitle: { textAlign: 'center', fontSize: 20 },
+  codeModalValue: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 16, fontSize: 34, fontFamily: 'Inter_700Bold', letterSpacing: 2, textAlign: 'center', overflow: 'hidden' },
+  codeModalHint: { textAlign: 'center' },
+  codeModalDone: { alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 8 },
+  codeModalDoneText: { fontSize: 14, fontFamily: 'Inter_700Bold' },
   hint: { fontSize: 12, fontFamily: 'Inter_400Regular', lineHeight: 17, marginTop: 2 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: 1, padding: 14 },
   statusLabel: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
