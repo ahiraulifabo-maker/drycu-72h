@@ -106,6 +106,36 @@ components:
       properties:
         storeName:
           type: string
+        customers:
+          type: array
+          items: {}
+        orders:
+          type: array
+          items: {}
+        nextDI:
+          type: integer
+        topUpRates:
+          type: object
+          additionalProperties:
+            type: number
+        garmentRateOverrides:
+          type: object
+          additionalProperties:
+            type: object
+        storeInfo:
+          type: object
+          additionalProperties:
+            type: string
+        printerCalibration:
+          $ref: "#/components/schemas/PrinterCalibration"
+        deletedCustomerIds:
+          type: array
+          items:
+            type: string
+        deletedOrderIds:
+          type: array
+          items:
+            type: string
       required:
         - storeName
     StoreDataPayload:
@@ -135,6 +165,14 @@ components:
             type: string
         printerCalibration:
           $ref: "#/components/schemas/PrinterCalibration"
+        deletedCustomerIds:
+          type: array
+          items:
+            type: string
+        deletedOrderIds:
+          type: array
+          items:
+            type: string
       required:
         - storeName
         - customers
@@ -176,9 +214,19 @@ components:
               type: string
             updatedAt:
               type: string
+            deletedCustomerIds:
+              type: array
+              items:
+                type: string
+            deletedOrderIds:
+              type: array
+              items:
+                type: string
           required:
             - storeId
             - updatedAt
+            - deletedCustomerIds
+            - deletedOrderIds
     ErrorResponse:
       type: object
       properties:

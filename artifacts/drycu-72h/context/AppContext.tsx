@@ -17,6 +17,8 @@ const STORAGE_KEYS = {
   STORE_INFO:   'drycu_store_info',
   STORE_ID:     'drycu_store_id',
   PRINTER_CALIBRATION: 'drycu_printer_calibration',
+  DELETED_CUSTOMER_IDS: 'drycu_deleted_customer_ids',
+  DELETED_ORDER_IDS: 'drycu_deleted_order_ids',
 };
 
 export type SyncStatus = 'idle' | 'syncing' | 'error';
@@ -42,6 +44,8 @@ interface AppContextType {
   storeInfo:            StoreInfoData;
   printerCalibration:   PrinterCalibration;
   updatePrinterCalibration: (changes: Partial<PrinterCalibration>) => Promise<void>;
+  deletedCustomerIds:   string[];
+  deletedOrderIds:      string[];
 
   // Multi-device sync — pairs this device to a shop's data by a shareable
   // code. See context comment above `createNewStore` for how it works.
@@ -120,6 +124,45 @@ function buildDefaultTopUpRates(): Record<string, number> {
   return r;
 }
 
+function parseIdList(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function recordVersion(record: { updatedAt?: string; createdAt?: string }): number {
+  const timestamp = Date.parse(record.updatedAt ?? record.createdAt ?? '');
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function mergeById<T extends { id: string; createdAt?: string; updatedAt?: string }>(
+  local: T[],
+  remote: T[],
+  deletedIds: string[],
+): T[] {
+  const deleted = new Set(deletedIds);
+  const merged = new Map<string, T>();
+
+  for (const record of local) {
+    if (record?.id && !deleted.has(record.id)) merged.set(record.id, record);
+  }
+  for (const record of remote) {
+    if (!record?.id || deleted.has(record.id)) continue;
+    const current = merged.get(record.id);
+    // The server copy wins on ties; local wins only when it has a newer edit.
+    if (!current || recordVersion(record) >= recordVersion(current)) {
+      merged.set(record.id, record);
+    }
+  }
+  return [...merged.values()];
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [customers,            setCustomers]            = useState<Customer[]>([]);
   const [orders,               setOrders]               = useState<Order[]>([]);
@@ -130,6 +173,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [storeInfo,            setStoreInfo]            = useState<StoreInfoData>({ ...DEFAULT_STORE_INFO });
   const [printerCalibration,   setPrinterCalibration]   = useState<PrinterCalibration>({ ...DEFAULT_PRINTER_CALIBRATION });
   const printerCalibrationRef = useRef<PrinterCalibration>({ ...DEFAULT_PRINTER_CALIBRATION });
+  const [deletedCustomerIds, setDeletedCustomerIds] = useState<string[]>([]);
+  const [deletedOrderIds, setDeletedOrderIds] = useState<string[]>([]);
+  const deletedCustomerIdsRef = useRef<string[]>([]);
+  const deletedOrderIdsRef = useRef<string[]>([]);
 
   const [storeId,      setStoreId]      = useState<string | null>(null);
   const [syncStatus,   setSyncStatus]   = useState<SyncStatus>('idle');
@@ -142,7 +189,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [c, o, d, t, g, si, sid, pc] = await Promise.all([
+        const [c, o, d, t, g, si, sid, pc, deletedCustomers, deletedOrders] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.CUSTOMERS),
           AsyncStorage.getItem(STORAGE_KEYS.ORDERS),
           AsyncStorage.getItem(STORAGE_KEYS.NEXT_DI),
@@ -151,6 +198,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(STORAGE_KEYS.STORE_INFO),
           AsyncStorage.getItem(STORAGE_KEYS.STORE_ID),
           AsyncStorage.getItem(STORAGE_KEYS.PRINTER_CALIBRATION),
+          AsyncStorage.getItem(STORAGE_KEYS.DELETED_CUSTOMER_IDS),
+          AsyncStorage.getItem(STORAGE_KEYS.DELETED_ORDER_IDS),
         ]);
         if (c)  setCustomers(JSON.parse(c));
         if (o)  setOrders(JSON.parse(o));
@@ -179,6 +228,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           printerCalibrationRef.current = savedCalibration;
           setPrinterCalibration(savedCalibration);
         }
+        const savedDeletedCustomers = parseIdList(deletedCustomers);
+        const savedDeletedOrders = parseIdList(deletedOrders);
+        deletedCustomerIdsRef.current = savedDeletedCustomers;
+        deletedOrderIdsRef.current = savedDeletedOrders;
+        setDeletedCustomerIds(savedDeletedCustomers);
+        setDeletedOrderIds(savedDeletedOrders);
         if (sid) {
           setStoreId(sid);
           // Loading local data isn't a "change" that should trigger a push.
@@ -258,6 +313,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     garmentRateOverrides: Record<string, Partial<GarmentRate>>;
     storeInfo: StoreInfoData;
     printerCalibration: PrinterCalibration;
+    deletedCustomerIds: string[];
+    deletedOrderIds: string[];
   };
 
   // Single-flight push queue: on a flaky connection two overlapping PUTs
@@ -282,6 +339,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         garmentRateOverrides: snapshot.garmentRateOverrides,
         storeInfo: snapshot.storeInfo as unknown as Record<string, string>,
         printerCalibration: snapshot.printerCalibration,
+        deletedCustomerIds: snapshot.deletedCustomerIds,
+        deletedOrderIds: snapshot.deletedOrderIds,
       });
       setLastSyncedAt(row.updatedAt);
       setSyncStatus('idle');
@@ -318,24 +377,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (skipNextPush.current) { skipNextPush.current = false; return; }
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {
-      pushToServer(storeId, { customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo, printerCalibration });
+      pushToServer(storeId, {
+        customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo, printerCalibration,
+        deletedCustomerIds, deletedOrderIds,
+      });
     }, 1500);
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo, printerCalibration, storeId, isLoaded]);
+  }, [customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo, printerCalibration, deletedCustomerIds, deletedOrderIds, storeId, isLoaded]);
 
   const applyRemoteSnapshot = async (row: {
     storeId: string; updatedAt: string; customers: unknown; orders: unknown;
     nextDI: number; topUpRates: Record<string, number>;
     garmentRateOverrides: Record<string, unknown>; storeInfo: Record<string, string>;
     printerCalibration?: PrinterCalibration;
+    deletedCustomerIds?: string[];
+    deletedOrderIds?: string[];
   }) => {
-    const remoteCustomers = row.customers as Customer[];
-    const remoteOrders = row.orders as Order[];
+    if (!Array.isArray(row.customers) || !Array.isArray(row.orders)) {
+      throw new Error('The store server returned an invalid customer/order snapshot; local data was kept.');
+    }
+    const remoteDeletedCustomers = parseIdList(JSON.stringify(row.deletedCustomerIds ?? []));
+    const remoteDeletedOrders = parseIdList(JSON.stringify(row.deletedOrderIds ?? []));
+    const remoteDeletedCustomerSet = new Set(remoteDeletedCustomers);
+    const remoteDeletedOrderSet = new Set(remoteDeletedOrders);
+    const remoteCustomers = (row.customers as Customer[]).filter(customer => !remoteDeletedCustomerSet.has(customer.id));
+    const remoteOrders = (row.orders as Order[]).filter(order => !remoteDeletedOrderSet.has(order.id));
     const remoteGarmentRates = row.garmentRateOverrides as Record<string, Partial<GarmentRate>>;
     const remoteStoreInfo = { ...DEFAULT_STORE_INFO, ...row.storeInfo } as StoreInfoData;
     const remotePrinterCalibration = normalizePrinterCalibration(row.printerCalibration);
 
+    deletedCustomerIdsRef.current = remoteDeletedCustomers;
+    deletedOrderIdsRef.current = remoteDeletedOrders;
+    setDeletedCustomerIds(remoteDeletedCustomers);
+    setDeletedOrderIds(remoteDeletedOrders);
     setCustomers(remoteCustomers);
     setOrders(remoteOrders);
     setNextDI(row.nextDI);
@@ -356,18 +431,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(STORAGE_KEYS.GARMENT_RATES, JSON.stringify(remoteGarmentRates)),
       AsyncStorage.setItem(STORAGE_KEYS.STORE_INFO, JSON.stringify(remoteStoreInfo)),
       AsyncStorage.setItem(STORAGE_KEYS.PRINTER_CALIBRATION, JSON.stringify(remotePrinterCalibration)),
+      AsyncStorage.setItem(STORAGE_KEYS.DELETED_CUSTOMER_IDS, JSON.stringify(remoteDeletedCustomers)),
+      AsyncStorage.setItem(STORAGE_KEYS.DELETED_ORDER_IDS, JSON.stringify(remoteDeletedOrders)),
       AsyncStorage.setItem(STORAGE_KEYS.STORE_ID, row.storeId),
     ]);
   };
 
-  // Creates a fresh store code on the server, immediately uploads the
-  // current local data under it, and pairs this device to it.
+  // Create the code and seed its complete snapshot in one API request. This
+  // avoids exposing a valid-looking code that points at an empty server row
+  // when the follow-up upload fails.
   const createNewStore = async (storeName: string): Promise<string> => {
-    const row = await createStore({ storeName });
+    const row = await createStore({
+      storeName,
+      customers,
+      orders,
+      nextDI,
+      topUpRates,
+      garmentRateOverrides,
+      storeInfo: storeInfo as unknown as Record<string, string>,
+      printerCalibration,
+      deletedCustomerIds,
+      deletedOrderIds,
+    });
+    await AsyncStorage.setItem(STORAGE_KEYS.STORE_ID, row.storeId);
     setStoreId(row.storeId);
     setLastSyncedAt(row.updatedAt);
-    await AsyncStorage.setItem(STORAGE_KEYS.STORE_ID, row.storeId);
-    await pushToServer(row.storeId, { customers, orders, nextDI, topUpRates, garmentRateOverrides, storeInfo, printerCalibration });
+    setSyncStatus('idle');
     return row.storeId;
   };
 
@@ -382,7 +471,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const pullLatest = async (): Promise<void> => {
     if (!storeId) return;
     const row = await getStore(storeId);
-    await applyRemoteSnapshot(row);
+    if (!Array.isArray(row.customers) || !Array.isArray(row.orders)) {
+      throw new Error('The store server returned an invalid customer/order snapshot; local data was kept.');
+    }
+    const mergedDeletedCustomers = [...new Set([...deletedCustomerIds, ...(row.deletedCustomerIds ?? [])])];
+    const mergedDeletedOrders = [...new Set([...deletedOrderIds, ...(row.deletedOrderIds ?? [])])];
+    const merged = await pushStore(storeId, {
+      storeName: row.storeName,
+      customers: mergeById(customers, row.customers as Customer[], mergedDeletedCustomers),
+      orders: mergeById(orders, row.orders as Order[], mergedDeletedOrders),
+      nextDI: Math.max(nextDI, row.nextDI),
+      topUpRates: row.topUpRates,
+      garmentRateOverrides: row.garmentRateOverrides,
+      storeInfo: row.storeInfo,
+      printerCalibration: row.printerCalibration ?? printerCalibration,
+      deletedCustomerIds: mergedDeletedCustomers,
+      deletedOrderIds: mergedDeletedOrders,
+    });
+    await applyRemoteSnapshot(merged);
   };
 
   // Unpairs this device from sync without deleting any server-side data —
@@ -407,7 +513,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addCustomer = async (data: Omit<Customer, 'id' | 'createdAt'>): Promise<Customer | null> => {
     const dup = findDuplicate(data.name, data.mobile);
     if (dup) return null;
-    const customer: Customer = { ...data, id: generateId(), createdAt: new Date().toISOString() };
+    const now = new Date().toISOString();
+    const customer: Customer = { ...data, id: generateId(), createdAt: now, updatedAt: now };
     const updated = [...customers, customer];
     setCustomers(updated);
     await saveCustomers(updated);
@@ -415,15 +522,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateCustomer = async (id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>) => {
-    const updated = customers.map(c => c.id === id ? { ...c, ...data } : c);
+    const updated = customers.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c);
     setCustomers(updated);
     await saveCustomers(updated);
   };
 
   const deleteCustomer = async (id: string) => {
     const updated = customers.filter(c => c.id !== id);
+    const deleted = [...new Set([...deletedCustomerIdsRef.current, id])];
+    deletedCustomerIdsRef.current = deleted;
+    setDeletedCustomerIds(deleted);
     setCustomers(updated);
-    await saveCustomers(updated);
+    await Promise.all([
+      saveCustomers(updated),
+      AsyncStorage.setItem(STORAGE_KEYS.DELETED_CUSTOMER_IDS, JSON.stringify(deleted)),
+    ]);
   };
 
   const searchCustomers = useCallback((query: string): Customer[] => {
@@ -473,6 +586,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString(),
       pickupDeadline: data.pickupDeadline,
       status: 'Pending',
+      updatedAt: new Date().toISOString(),
     };
 
     const newDI = nextDI + 1;
@@ -492,7 +606,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const updated = orders.map(o => {
       if (o.id !== id) return o;
-      const merged = { ...o, ...changes };
+      const merged = { ...o, ...changes, updatedAt: new Date().toISOString() };
       // Recompute financials if discount settings changed
       if (changes.discountType !== undefined || changes.discountValue !== undefined) {
         const { grossAmount, discountAmount, cgstAmount, sgstAmount, netPayable } =
@@ -506,32 +620,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateOrderStatus = async (id: string, status: OrderStatus) => {
-    const updated = orders.map(o => o.id === id ? { ...o, status } : o);
+    const updated = orders.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o);
     setOrders(updated);
     await saveOrders(updated);
   };
 
   const deleteOrder = async (id: string) => {
     const updated = orders.filter(o => o.id !== id);
+    const deleted = [...new Set([...deletedOrderIdsRef.current, id])];
+    deletedOrderIdsRef.current = deleted;
+    setDeletedOrderIds(deleted);
     setOrders(updated);
-    await saveOrders(updated);
+    await Promise.all([
+      saveOrders(updated),
+      AsyncStorage.setItem(STORAGE_KEYS.DELETED_ORDER_IDS, JSON.stringify(deleted)),
+    ]);
   };
 
   const deleteAllOrders = async () => {
+    const deleted = [...new Set([...deletedOrderIdsRef.current, ...orders.map(order => order.id)])];
+    deletedOrderIdsRef.current = deleted;
+    setDeletedOrderIds(deleted);
     setOrders([]);
     setNextDI(1);
     await Promise.all([
       saveOrders([]),
       AsyncStorage.setItem(STORAGE_KEYS.NEXT_DI, '1'),
+      AsyncStorage.setItem(STORAGE_KEYS.DELETED_ORDER_IDS, JSON.stringify(deleted)),
     ]);
   };
 
   const deleteAllCustomers = async () => {
+    const deleted = [...new Set([...deletedCustomerIdsRef.current, ...customers.map(customer => customer.id)])];
+    deletedCustomerIdsRef.current = deleted;
+    setDeletedCustomerIds(deleted);
     setCustomers([]);
-    await saveCustomers([]);
+    await Promise.all([
+      saveCustomers([]),
+      AsyncStorage.setItem(STORAGE_KEYS.DELETED_CUSTOMER_IDS, JSON.stringify(deleted)),
+    ]);
   };
 
   const factoryReset = async () => {
+    const deletedCustomers = [...new Set([...deletedCustomerIdsRef.current, ...customers.map(customer => customer.id)])];
+    const deletedOrders = [...new Set([...deletedOrderIdsRef.current, ...orders.map(order => order.id)])];
+    deletedCustomerIdsRef.current = deletedCustomers;
+    deletedOrderIdsRef.current = deletedOrders;
+    setDeletedCustomerIds(deletedCustomers);
+    setDeletedOrderIds(deletedOrders);
     setCustomers([]);
     setOrders([]);
     setNextDI(1);
@@ -549,6 +685,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       STORAGE_KEYS.PRINTER_CALIBRATION,
       TOPUP_STORAGE_KEY,
     ]);
+    await Promise.all([
+      AsyncStorage.setItem(STORAGE_KEYS.DELETED_CUSTOMER_IDS, JSON.stringify(deletedCustomers)),
+      AsyncStorage.setItem(STORAGE_KEYS.DELETED_ORDER_IDS, JSON.stringify(deletedOrders)),
+      AsyncStorage.setItem(STORAGE_KEYS.CUSTOMERS, '[]'),
+      AsyncStorage.setItem(STORAGE_KEYS.ORDERS, '[]'),
+    ]);
   };
 
   const getOrdersForCustomer = useCallback((customerId: string) =>
@@ -560,6 +702,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       customers, orders, nextDI, isLoaded, topUpRates, garmentRateOverrides, storeInfo, printerCalibration,
+      deletedCustomerIds, deletedOrderIds,
       storeId, syncStatus, lastSyncedAt, createNewStore, joinStore, pullLatest, leaveStore,
       addCustomer, updateCustomer, deleteCustomer, findDuplicate, searchCustomers, getCustomer,
       updateTopUpRate, updateTopUpRates, updateGarmentRate, resetGarmentRate, updateStoreInfo, updatePrinterCalibration,

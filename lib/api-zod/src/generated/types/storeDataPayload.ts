@@ -19,4 +19,6 @@ export interface StoreDataPayload {
   garmentRateOverrides: StoreDataPayloadGarmentRateOverrides;
   storeInfo: StoreDataPayloadStoreInfo;
   printerCalibration?: PrinterCalibration;
+  deletedCustomerIds?: string[];
+  deletedOrderIds?: string[];
 }

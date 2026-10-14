@@ -1,6 +1,6 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import { db, storeDataTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   CreateStoreBody,
   PushStoreBody,
@@ -19,6 +19,51 @@ const DEFAULT_PRINTER_CALIBRATION: PrinterCalibrationData = {
   billOffsetXmm: 0,
   billOffsetYmm: 0,
 };
+
+function normalizeIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((id): id is string => typeof id === "string" && id.length > 0))];
+}
+
+function recordVersion(value: unknown): number {
+  if (!value || typeof value !== "object") return 0;
+  const record = value as Record<string, unknown>;
+  const timestamp = record.updatedAt ?? record.createdAt;
+  if (typeof timestamp !== "string" && !(timestamp instanceof Date)) return 0;
+  const parsed = Date.parse(String(timestamp));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function mergeRecords(
+  existingValue: unknown,
+  incomingValue: unknown,
+  deletedIds: Set<string>,
+): unknown[] {
+  const merged = new Map<string, unknown>();
+  const unkeyed: unknown[] = [];
+
+  for (const source of [existingValue, incomingValue]) {
+    if (!Array.isArray(source)) continue;
+    for (const value of source) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const record = value as Record<string, unknown>;
+      const id = typeof record.id === "string" ? record.id : "";
+      if (!id) {
+        unkeyed.push(value);
+        continue;
+      }
+      if (deletedIds.has(id)) continue;
+      const current = merged.get(id);
+      // Incoming edits win only when they carry a newer updatedAt/createdAt.
+      // This prevents a stale device snapshot from undoing newer customer/order edits.
+      if (current === undefined || recordVersion(value) > recordVersion(current)) {
+        merged.set(id, value);
+      }
+    }
+  }
+
+  return [...merged.values(), ...unkeyed];
+}
 
 function normalizePrinterCalibration(value: unknown): PrinterCalibrationData {
   const input = value && typeof value === "object"
@@ -64,8 +109,15 @@ function generateStoreCode(): string {
 }
 
 function toResponse(row: typeof storeDataTable.$inferSelect) {
-  const rawStoreInfo = row.storeInfo as Record<string, unknown>;
-  const { printerCalibration, ...storeInfo } = rawStoreInfo;
+  const rawStoreInfo = row.storeInfo && typeof row.storeInfo === "object"
+    ? row.storeInfo as Record<string, unknown>
+    : {};
+  const {
+    printerCalibration,
+    deletedCustomerIds,
+    deletedOrderIds,
+    ...storeInfo
+  } = rawStoreInfo;
 
   return {
     storeId: row.storeId,
@@ -77,12 +129,18 @@ function toResponse(row: typeof storeDataTable.$inferSelect) {
     garmentRateOverrides: row.garmentRateOverrides,
     storeInfo,
     printerCalibration: normalizePrinterCalibration(printerCalibration),
+    deletedCustomerIds: normalizeIds(deletedCustomerIds),
+    deletedOrderIds: normalizeIds(deletedOrderIds),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
 router.post("/stores", asyncHandler(async (req, res) => {
   const body = CreateStoreBody.parse(req.body);
+  const deletedCustomerIds = normalizeIds(body.deletedCustomerIds);
+  const deletedOrderIds = normalizeIds(body.deletedOrderIds);
+  const deletedCustomerSet = new Set(deletedCustomerIds);
+  const deletedOrderSet = new Set(deletedOrderIds);
 
   let storeId = generateStoreCode();
   // Extremely unlikely collision, but guard against it anyway.
@@ -99,12 +157,17 @@ router.post("/stores", asyncHandler(async (req, res) => {
     .values({
       storeId,
       storeName: body.storeName,
-      customers: [],
-      orders: [],
-      nextDi: 1,
-      topUpRates: {},
-      garmentRateOverrides: {},
-      storeInfo: { printerCalibration: DEFAULT_PRINTER_CALIBRATION },
+      customers: mergeRecords([], body.customers, deletedCustomerSet),
+      orders: mergeRecords([], body.orders, deletedOrderSet),
+      nextDi: body.nextDI ?? 1,
+      topUpRates: body.topUpRates ?? {},
+      garmentRateOverrides: body.garmentRateOverrides ?? {},
+      storeInfo: {
+        ...(body.storeInfo ?? {}),
+        printerCalibration: normalizePrinterCalibration(body.printerCalibration),
+        deletedCustomerIds,
+        deletedOrderIds,
+      },
     })
     .returning();
 
@@ -130,36 +193,55 @@ router.put("/stores/:storeId", asyncHandler(async (req, res) => {
   // server-generated via POST /stores. This keeps the shareable code the
   // sole namespace-allocation path instead of letting any caller create
   // (or guess-squat) an arbitrary storeId via PUT.
-  const existing = await db.query.storeDataTable.findFirst({
-    where: eq(storeDataTable.storeId, storeId),
+  const row = await db.transaction(async (tx) => {
+    // Lock the store row so simultaneous requests from a computer and phone
+    // are merged serially instead of one complete snapshot erasing the other.
+    await tx.execute(sql`SELECT store_id FROM store_data WHERE store_id = ${storeId} FOR UPDATE`);
+    const existing = await tx.query.storeDataTable.findFirst({
+      where: eq(storeDataTable.storeId, storeId),
+    });
+    if (!existing) return null;
+
+    const existingStoreInfo = existing.storeInfo as Record<string, unknown>;
+    const deletedCustomerIds = normalizeIds([
+      ...normalizeIds(existingStoreInfo.deletedCustomerIds),
+      ...normalizeIds(body.deletedCustomerIds),
+    ]);
+    const deletedOrderIds = normalizeIds([
+      ...normalizeIds(existingStoreInfo.deletedOrderIds),
+      ...normalizeIds(body.deletedOrderIds),
+    ]);
+    const printerCalibration = normalizePrinterCalibration(
+      body.printerCalibration ?? existingStoreInfo.printerCalibration,
+    );
+
+    const [updated] = await tx
+      .update(storeDataTable)
+      .set({
+        storeName: body.storeName,
+        customers: mergeRecords(existing.customers, body.customers, new Set(deletedCustomerIds)),
+        orders: mergeRecords(existing.orders, body.orders, new Set(deletedOrderIds)),
+        nextDi: Math.max(existing.nextDi, body.nextDI),
+        topUpRates: body.topUpRates,
+        garmentRateOverrides: body.garmentRateOverrides,
+        storeInfo: {
+          ...body.storeInfo,
+          printerCalibration,
+          deletedCustomerIds,
+          deletedOrderIds,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(storeDataTable.storeId, storeId))
+      .returning();
+
+    return updated ?? null;
   });
-  if (!existing) {
+
+  if (!row) {
     res.status(404).json({ error: "Store not found — create it first with POST /stores" });
     return;
   }
-
-  const existingStoreInfo = existing.storeInfo as Record<string, unknown>;
-  const printerCalibration = normalizePrinterCalibration(
-    body.printerCalibration ?? existingStoreInfo.printerCalibration,
-  );
-
-  const [row] = await db
-    .update(storeDataTable)
-    .set({
-      storeName: body.storeName,
-      customers: body.customers,
-      orders: body.orders,
-      nextDi: body.nextDI,
-      topUpRates: body.topUpRates,
-      garmentRateOverrides: body.garmentRateOverrides,
-      storeInfo: {
-        ...body.storeInfo,
-        printerCalibration,
-      },
-      updatedAt: new Date(),
-    })
-    .where(eq(storeDataTable.storeId, storeId))
-    .returning();
 
   res.json(toResponse(row));
 }));

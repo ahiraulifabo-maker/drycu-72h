@@ -9,15 +9,11 @@ export interface HealthStatus {
   status: string;
 }
 
-export interface CreateStoreRequest {
-  storeName: string;
-}
+export type CreateStoreRequestTopUpRates = {[key: string]: number};
 
-export type StoreDataPayloadTopUpRates = {[key: string]: number};
+export type CreateStoreRequestGarmentRateOverrides = {[key: string]: { [key: string]: unknown }};
 
-export type StoreDataPayloadGarmentRateOverrides = {[key: string]: { [key: string]: unknown }};
-
-export type StoreDataPayloadStoreInfo = {[key: string]: string};
+export type CreateStoreRequestStoreInfo = {[key: string]: string};
 
 export interface PrinterCalibration {
   /**
@@ -42,6 +38,25 @@ export interface PrinterCalibration {
   billOffsetYmm: number;
 }
 
+export interface CreateStoreRequest {
+  storeName: string;
+  customers?: unknown[];
+  orders?: unknown[];
+  nextDI?: number;
+  topUpRates?: CreateStoreRequestTopUpRates;
+  garmentRateOverrides?: CreateStoreRequestGarmentRateOverrides;
+  storeInfo?: CreateStoreRequestStoreInfo;
+  printerCalibration?: PrinterCalibration;
+  deletedCustomerIds?: string[];
+  deletedOrderIds?: string[];
+}
+
+export type StoreDataPayloadTopUpRates = {[key: string]: number};
+
+export type StoreDataPayloadGarmentRateOverrides = {[key: string]: { [key: string]: unknown }};
+
+export type StoreDataPayloadStoreInfo = {[key: string]: string};
+
 export interface StoreDataPayload {
   storeName: string;
   customers: unknown[];
@@ -51,11 +66,15 @@ export interface StoreDataPayload {
   garmentRateOverrides: StoreDataPayloadGarmentRateOverrides;
   storeInfo: StoreDataPayloadStoreInfo;
   printerCalibration?: PrinterCalibration;
+  deletedCustomerIds?: string[];
+  deletedOrderIds?: string[];
 }
 
 export type StoreDataResponse = StoreDataPayload & {
   storeId: string;
   updatedAt: string;
+  deletedCustomerIds: string[];
+  deletedOrderIds: string[];
 };
 
 export interface ErrorResponse {

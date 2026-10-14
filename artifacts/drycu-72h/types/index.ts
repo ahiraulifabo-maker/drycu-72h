@@ -9,6 +9,7 @@ export interface Customer {
   email?: string;
   specialNote?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export type ServiceType = 'Laundry' | 'Dry Cleaning' | 'Simple Press' | 'Steam Press';
@@ -55,4 +56,5 @@ export interface Order {
   createdAt: string;
   pickupDeadline: string;
   status: OrderStatus;
+  updatedAt?: string;
 }

@@ -5,7 +5,20 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateStoreRequestGarmentRateOverrides } from './createStoreRequestGarmentRateOverrides';
+import type { CreateStoreRequestStoreInfo } from './createStoreRequestStoreInfo';
+import type { CreateStoreRequestTopUpRates } from './createStoreRequestTopUpRates';
+import type { PrinterCalibration } from './printerCalibration';
 
 export interface CreateStoreRequest {
   storeName: string;
+  customers?: unknown[];
+  orders?: unknown[];
+  nextDI?: number;
+  topUpRates?: CreateStoreRequestTopUpRates;
+  garmentRateOverrides?: CreateStoreRequestGarmentRateOverrides;
+  storeInfo?: CreateStoreRequestStoreInfo;
+  printerCalibration?: PrinterCalibration;
+  deletedCustomerIds?: string[];
+  deletedOrderIds?: string[];
 }

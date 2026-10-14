@@ -7,6 +7,9 @@
  */
 
 export * from './createStoreRequest';
+export * from './createStoreRequestGarmentRateOverrides';
+export * from './createStoreRequestStoreInfo';
+export * from './createStoreRequestTopUpRates';
 export * from './errorResponse';
 export * from './healthStatus';
 export * from './printerCalibration';

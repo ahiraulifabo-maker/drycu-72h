@@ -10,4 +10,6 @@ import type { StoreDataPayload } from './storeDataPayload';
 export type StoreDataResponse = StoreDataPayload & {
   storeId: string;
   updatedAt: string;
+  deletedCustomerIds: string[];
+  deletedOrderIds: string[];
 };

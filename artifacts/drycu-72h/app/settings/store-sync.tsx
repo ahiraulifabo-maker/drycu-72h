@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -37,18 +38,12 @@ export default function StoreSyncScreen() {
   const [busy, setBusy] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
-
-  const confirmAction = (title: string, message: string, confirmLabel: string): Promise<boolean> => {
-    if (Platform.OS === 'web') {
-      return Promise.resolve(window.confirm(`${title}\n\n${message}`));
-    }
-    return new Promise(resolve => {
-      Alert.alert(title, message, [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: confirmLabel, onPress: () => resolve(true) },
-      ]);
-    });
-  };
+  const [confirmation, setConfirmation] = useState<null | {
+    action: 'join' | 'leave';
+    title: string;
+    message: string;
+    confirmLabel: string;
+  }>(null);
 
   const showMessage = (title: string, message: string) => {
     if (Platform.OS === 'web') {
@@ -60,40 +55,44 @@ export default function StoreSyncScreen() {
 
   const handleCreate = async () => {
     if (busy) return;
-    const confirmed = await confirmAction(
-      'Create Store Code',
-      `This will generate a code for "${storeInfo.name}" and upload customers, orders, rates, store details, and printer calibration so your phone can pull the same setup.`,
-      'Create',
-    );
-    if (!confirmed) return;
     setBusy(true);
     try {
       await createNewStore(storeInfo.name);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
-      showMessage('Error', 'Could not create the store code. Check the internet connection and try again.');
+      showMessage('Code not created', 'The store code and its initial data were not saved. Check your connection and try again.');
     } finally {
       setBusy(false);
     }
   };
 
-  const handleJoin = async () => {
-    if (busy) return;
-    const code = joinCode.trim();
-    if (!code) return;
-    const confirmed = await confirmAction(
-      'Join Store',
-      `This will REPLACE all data on this device with store code "${code.toUpperCase()}", including its printer calibration. This cannot be undone.`,
-      'Replace & Join',
-    );
-    if (!confirmed) return;
+  const handleJoin = () => {
+    const code = joinCode.trim().toUpperCase();
+    if (busy || !code) return;
+    setConfirmation({
+      action: 'join',
+      title: 'Join Store',
+      message: `This will replace all data on this device with store code "${code}", including its printer calibration. This cannot be undone.`,
+      confirmLabel: 'Replace & Join',
+    });
+  };
+
+  const handleConfirm = async () => {
+    if (!confirmation || busy) return;
+    const action = confirmation.action;
+    setConfirmation(null);
     setBusy(true);
     try {
-      await joinStore(code);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setJoinCode('');
-    } catch {
-      showMessage('Error', 'Store code not found, or the server could not be reached.');
+      if (action === 'join') {
+        await joinStore(joinCode.trim().toUpperCase());
+        setJoinCode('');
+      } else {
+        await leaveStore();
+      }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The server could not be reached.';
+      showMessage(action === 'join' ? 'Could not join store' : 'Could not unlink device', message);
     } finally {
       setBusy(false);
     }
@@ -119,14 +118,14 @@ export default function StoreSyncScreen() {
     }
   };
 
-  const handleLeave = async () => {
+  const handleLeave = () => {
     if (busy) return;
-    const confirmed = await confirmAction(
-      'Unlink This Device',
-      'This device will stop syncing. The store code will keep working on any other device — your data is not deleted from the server.',
-      'Unlink',
-    );
-    if (confirmed) await leaveStore();
+    setConfirmation({
+      action: 'leave',
+      title: 'Unlink This Device',
+      message: 'This device will stop syncing. The store code will keep working on any other device — your local and server data will not be deleted.',
+      confirmLabel: 'Unlink',
+    });
   };
 
   return (
@@ -246,6 +245,37 @@ export default function StoreSyncScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+      <Modal
+        visible={confirmation !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmation(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.confirmCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>{confirmation?.title}</Text>
+            <Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>{confirmation?.message}</Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={[styles.confirmButton, { borderColor: colors.border }]}
+                onPress={() => setConfirmation(null)}
+                disabled={busy}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmButton, { backgroundColor: colors.destructive }]}
+                onPress={handleConfirm}
+                disabled={busy}
+              >
+                <Text style={{ color: '#fff', fontFamily: 'Inter_700Bold' }}>
+                  {busy ? 'Working…' : confirmation?.confirmLabel}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -273,4 +303,8 @@ const styles = StyleSheet.create({
   codeInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12 },
   primaryBtnText: { color: '#fff', fontSize: 14, fontFamily: 'Inter_700Bold' },
+  modalBackdrop: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.45)' },
+  confirmCard: { borderRadius: 16, borderWidth: 1, padding: 20, gap: 12, maxWidth: 460, width: '100%', alignSelf: 'center' },
+  confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
+  confirmButton: { minHeight: 42, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 });
