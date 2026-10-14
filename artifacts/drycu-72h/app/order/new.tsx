@@ -57,7 +57,7 @@ export default function NewOrderScreen() {
 
   const [activeCategory, setActiveCategory] = useState<ItemCategory>('Men');
   const [itemModal, setItemModal] = useState<ItemModalState>({ visible: false, category: 'Men', itemName: '' });
-  const [modalService, setModalService] = useState<ServiceType>('Dry Cleaning');
+  const [modalService, setModalService] = useState<ServiceType | null>(null);
   const [modalKg, setModalKg] = useState('0');
   const [modalQty, setModalQty] = useState('1');
   const [modalCustomPrice, setModalCustomPrice] = useState('');
@@ -110,19 +110,23 @@ export default function NewOrderScreen() {
   const advance    = parseFloat(advancePaid) || 0;
   const balance    = netPayable - advance;
 
-  const modalDefaultSubtotal = computeItemSubtotalWithOverrides(
-    itemModal.itemName, modalService,
-    parseFloat(modalKg) || 0, parseInt(modalQty) || 0,
-    garmentRateOverrides
-  );
+  const modalDefaultSubtotal = modalService
+    ? computeItemSubtotalWithOverrides(
+        itemModal.itemName, modalService,
+        parseFloat(modalKg) || 0, parseInt(modalQty) || 0,
+        garmentRateOverrides
+      )
+    : 0;
   const modalCustomPriceNum = parseFloat(modalCustomPrice);
-  const modalEffectiveSubtotal = modalCustomPrice.trim() !== '' && !isNaN(modalCustomPriceNum)
+  const modalEffectiveSubtotal = modalService && modalCustomPrice.trim() !== '' && !isNaN(modalCustomPriceNum)
     ? modalCustomPriceNum
     : modalDefaultSubtotal;
 
   const openItemModal = (category: ItemCategory, itemName: string) => {
     setItemModal({ visible: true, category, itemName });
-    setModalService('Dry Cleaning');
+    // Never silently assign Dry Cleaning to a new garment. The operator must
+    // choose the service for each individual item before it can be added.
+    setModalService(null);
     setModalKg('0');
     setModalQty('1');
     setModalCustomPrice('');
@@ -130,6 +134,10 @@ export default function NewOrderScreen() {
   };
 
   const addItemToOrder = () => {
+    if (!modalService) {
+      Alert.alert('Choose a service', 'Select the service required for this garment before adding it.');
+      return;
+    }
     const item: OrderItem = {
       id: generateItemId(),
       category: itemModal.category,
@@ -550,7 +558,9 @@ export default function NewOrderScreen() {
               </View>
             </View>
 
-            <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>Service Type</Text>
+            <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>
+              Service Type {modalService ? `· ${modalService}` : '· Choose one for this garment'}
+            </Text>
             <View style={styles.serviceGrid}>
               {SERVICE_TYPES.map(st => (
                 <TouchableOpacity
@@ -608,13 +618,13 @@ export default function NewOrderScreen() {
               keyboardType="decimal-pad"
               value={modalCustomPrice}
               onChangeText={setModalCustomPrice}
-              placeholder={`Default: ₹${modalDefaultSubtotal.toFixed(2)}`}
+              placeholder={modalService ? `Default: ₹${modalDefaultSubtotal.toFixed(2)}` : 'Select a service first'}
               placeholderTextColor={colors.mutedForeground}
             />
 
             <View style={[styles.subtotalBar, { backgroundColor: modalCustomPrice.trim() !== '' ? '#FFF3CD' : colors.secondary }]}>
               <Text style={[styles.subtotalLabel, { color: colors.mutedForeground }]}>
-                {modalCustomPrice.trim() !== '' ? '⚠ Custom Price' : 'Auto Price'}
+                {!modalService ? 'Select a service' : modalCustomPrice.trim() !== '' ? '⚠ Custom Price' : 'Auto Price'}
               </Text>
               <Text style={[styles.subtotalValue, { color: modalCustomPrice.trim() !== '' ? colors.warning : colors.primary }]}>
                 ₹{modalEffectiveSubtotal.toFixed(2)}
@@ -628,7 +638,11 @@ export default function NewOrderScreen() {
               >
                 <Text style={[styles.modalCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalAddBtn, { backgroundColor: colors.primary }]} onPress={addItemToOrder}>
+              <TouchableOpacity
+                style={[styles.modalAddBtn, { backgroundColor: colors.primary, opacity: modalService ? 1 : 0.5 }]}
+                onPress={addItemToOrder}
+                disabled={!modalService}
+              >
                 <Ionicons name="add" size={20} color="#fff" />
                 <Text style={styles.modalAddText}>Add Item</Text>
               </TouchableOpacity>

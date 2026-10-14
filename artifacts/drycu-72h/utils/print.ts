@@ -23,13 +23,21 @@ const SERVICE_NAMES: Record<string, string> = {
 
 function getServiceCode(item: any): string {
   const rawService = item?.serviceType ?? item?.service ?? item?.serviceName ?? item?.serviceLabel ?? '';
-  const normalized = String(rawService).trim().toLowerCase().replace(/\s+/g, ' ');
+  const normalized = String(rawService).trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
   return SERVICE_ABBR[normalized] ?? (normalized ? String(rawService).trim().toUpperCase() : 'SERVICE?');
 }
 
 function getServiceName(item: any): string {
   const code = getServiceCode(item);
   return SERVICE_NAMES[code] ?? code;
+}
+
+function getOrderNumber(order: any): string {
+  const raw = String(order?.id ?? order?.orderNumber ?? order?.diNumber ?? '').trim();
+  if (!raw) throw new Error('This order has no saved order number; printing was stopped to avoid a false bill or tag.');
+  if (/^DI-\d+$/i.test(raw)) return raw.toUpperCase();
+  if (/^\d+$/.test(raw)) return `DI-${raw.padStart(5, '0')}`;
+  return raw;
 }
 
 function estimateTagRollHeightMm(
@@ -69,8 +77,32 @@ async function dispatchPrint(
   if (isWeb) {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      window.alert('Printing was blocked by the browser. Allow pop-ups for this app and try again.');
-      return false;
+      // Some desktop browsers block pop-ups from an embedded app preview.
+      // Print from a hidden same-origin frame instead of silently failing.
+      const frame = document.createElement('iframe');
+      frame.setAttribute('aria-hidden', 'true');
+      frame.style.position = 'fixed';
+      frame.style.width = '1px';
+      frame.style.height = '1px';
+      frame.style.left = '-10000px';
+      frame.style.bottom = '0';
+      frame.style.border = '0';
+      frame.onload = () => {
+        const frameWindow = frame.contentWindow;
+        if (!frameWindow) {
+          frame.remove();
+          window.alert('The browser could not open the print dialog. Try allowing printing for this site.');
+          return;
+        }
+        const cleanup = () => window.setTimeout(() => frame.remove(), 500);
+        frameWindow.addEventListener('afterprint', cleanup, { once: true });
+        frameWindow.focus();
+        frameWindow.print();
+        window.setTimeout(cleanup, 60000);
+      };
+      frame.srcdoc = html;
+      document.body.appendChild(frame);
+      return true;
     }
     printWindow.document.open();
     printWindow.document.write(html);
@@ -112,81 +144,6 @@ function escapeHtml(value: unknown): string {
     .replace(/'/g, '&#039;');
 }
 
-function getSequentialOrderNumber(target: any): string {
-  if (typeof window !== 'undefined' && window.location) {
-    const urlParts = window.location.href.split('/');
-    const lastPart = urlParts[urlParts.length - 1] || '';
-    if (lastPart.toUpperCase().startsWith('DI-')) {
-      return lastPart.toUpperCase();
-    }
-  }
-  
-  if (typeof document !== 'undefined') {
-    const bodyText = document.body.innerText || '';
-    const match = bodyText.match(/ORDER\s*NO\s*:\s*(DI-\d+)/i);
-    if (match && match[1]) return match[1].toUpperCase();
-  }
-
-  const baseNum = target?.orderNumber || target?.id || '';
-  if (baseNum && String(baseNum).toUpperCase().startsWith('DI-')) return String(baseNum).toUpperCase();
-  
-  return baseNum ? 'DI-' + String(baseNum).padStart(5, '0') : 'DI-00022';
-}
-
-function extractCustomerDetailsDirectly() {
-  let capturedName = '';
-  let capturedPhone = '';
-
-  if (typeof document !== 'undefined') {
-    const allInputs = document.querySelectorAll('input, select, textarea');
-    allInputs.forEach((inp: any) => {
-      const val = (inp.value || '').trim();
-      if (!val) return;
-
-      if (/^\d{10}$/.test(val)) {
-        capturedPhone = val;
-      } 
-      else if (val.length >= 2 && isNaN(Number(val))) {
-        const lowerVal = val.toLowerCase();
-        const systemKeywords = ['customer', 'walk-in', 'search', 'find', 'filter', 'dry', 'laundry', 'iron', 'select', 'order', 'ahirauli'];
-        if (!systemKeywords.some(keyword => lowerVal.includes(keyword)) && !capturedName) {
-          capturedName = val;
-        }
-      }
-    });
-
-    if (!capturedName || !capturedPhone) {
-      const textElements = document.querySelectorAll('h1, h2, h3, h4, p, span, div, label, b, td');
-      textElements.forEach((el: any) => {
-        const txt = (el.innerText || '').trim();
-        if (!txt) return;
-
-        if (!capturedName) {
-          const nameMatch = txt.match(/(?:customer|name|cust|client|customer\s*name|ग्राहक)\s*[:|-]\s*([A-Za-z\s]{2,30})/i);
-          if (nameMatch && nameMatch[1]) {
-            const parsed = nameMatch[1].trim();
-            if (!['date', 'order', 'total', 'bill', 'walk-in', 'customer'].some(w => parsed.toLowerCase().includes(w))) {
-              capturedName = parsed;
-            }
-          }
-        }
-
-        if (!capturedPhone) {
-          const phoneMatch = txt.match(/(?:\+91|📌|📞|mob|phone|contact)?\s*([6-9]\d{9})/i);
-          if (phoneMatch && phoneMatch[1] && !txt.includes('9519705388')) {
-            capturedPhone = phoneMatch[1].trim();
-          }
-        }
-      });
-    }
-  }
-
-  return {
-    name: capturedName || 'Walk-in Customer',
-    phone: capturedPhone || ''
-  };
-}
-
 export async function printTags(
   order: any,
   storeInfo: any,
@@ -195,72 +152,25 @@ export async function printTags(
   const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 
   try {
-    const globalOrder = isWeb
-      ? (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {}
-      : {};
-    const selectedCustState = isWeb
-      ? (window as any).selectedCustomer || (window as any).currentCustomer || {}
-      : {};
-    
-    const directInfo = extractCustomerDetailsDirectly();
-    let customerName = order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || directInfo.name;
-    let orderNumber = getSequentialOrderNumber(order || globalOrder);
-
-    if (customerName === 'Walk-in Customer' && directInfo.name !== 'Walk-in Customer') {
-      customerName = directInfo.name;
+    const orderNumber = getOrderNumber(order);
+    const customerName = String(order?.customerName ?? order?.name ?? 'Customer');
+    const stateItems = Array.isArray(order?.items) ? order.items : [];
+    if (stateItems.length === 0) {
+      throw new Error('This order has no saved garment items, so no tags were printed.');
     }
 
-    let detectedItems: Array<{name: string, service: string, qty: number, price: number}> = [];
-    const stateItems = order?.items || order?.garments || globalOrder?.items || (isWeb ? (window as any).cartItems : []) || [];
-    
-    if (Array.isArray(stateItems) && stateItems.length > 0) {
-      stateItems.forEach((item: any) => {
-        detectedItems.push({
-          name: item.name || item.itemName || 'Garment',
-          service: getServiceName(item),
-          qty: Number(item.qty || item.quantity || 1),
-          price: Number(item.price !== undefined ? item.price : (item.rate || item.customPrice || 0))
-        });
-      });
-    }
-
-    if (detectedItems.length === 0 && isWeb && typeof document !== 'undefined') {
-      const rows = document.querySelectorAll('table tr, tr, .item-row, .cart-item, div[class*="row"], div[class*="item"]');
-      rows.forEach((row: any) => {
-        const txt = (row.innerText || '').trim();
-        if (!txt || ['total', 'gross', 'balance', 'due', 'subtotal', 'item', 'price'].some(w => txt.toLowerCase().includes(w))) return;
-
-        const cells = row.querySelectorAll('td, span, div, input');
-        if (cells.length >= 2) {
-          let nameCand = '';
-          let numericalTokens: number[] = [];
-
-          cells.forEach((c: any) => {
-            if (c.tagName === 'INPUT') {
-              const val = Number(c.value);
-              if (!isNaN(val) && val > 0) numericalTokens.push(val);
-            } else {
-              const innerT = (c.innerText || '').trim();
-              if (!innerT) return;
-              if (isNaN(Number(innerT)) && innerT.length > 2 && !['qty', 'rate', 'price', 'service'].some(w => innerT.toLowerCase().includes(w))) {
-                if (!nameCand) nameCand = innerT.split('\n')[0];
-              } else {
-                const num = Number(innerT.replace(/[^\d\.]/g, ''));
-                if (!isNaN(num) && num > 0) numericalTokens.push(num);
-              }
-            }
-          });
-
-          if (nameCand && nameCand.length < 30) {
-            let qty = numericalTokens.length > 1 ? numericalTokens[0] : 1;
-            const serviceMatch = txt.match(/\b(dry\s+cleaning|dry\s+clean|laundry(?:\s+service)?|simple\s+(?:press|ironing)|steam\s+(?:press|ironing)|ironing|iron)\b/i);
-            const svc = serviceMatch ? getServiceName({ serviceType: serviceMatch[0] }) : 'SERVICE?';
-
-            detectedItems.push({ name: nameCand.trim(), service: svc, qty: qty, price: 0 });
-          }
-        }
-      });
-    }
+    const detectedItems: Array<{ name: string; service: string; qty: number }> = stateItems.map((item: any) => {
+      const service = getServiceName(item);
+      if (!service || service === 'SERVICE?') {
+        throw new Error(`Service is missing for ${item?.itemName || 'a garment'}. Recreate the order with a service selected.`);
+      }
+      const qty = Math.max(1, Math.floor(Number(item?.qty ?? item?.quantity ?? 1)));
+      return {
+        name: String(item?.itemName ?? item?.name ?? 'Garment'),
+        service,
+        qty: Number.isFinite(qty) ? qty : 1,
+      };
+    });
 
     const totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
     const tagRollHeightMm = estimateTagRollHeightMm(detectedItems, customerName);
@@ -278,7 +188,7 @@ export async function printTags(
             <div class="order-id">${escapeHtml(orderNumber)}</div>
             <div class="cust-title">${escapeHtml(customerName)}</div>
             <div class="svc-row">
-            <span class="svc-code">${escapeHtml(getServiceName({ serviceType: item.service }))}</span>
+            <span class="svc-code">${escapeHtml(item.service)}</span>
               <span class="counter-ratio">${currentPieceIndex}/${totalPcs}</span>
             </div>
             <div class="info-row">Ready: ${readyDateStr}</div>
@@ -318,7 +228,9 @@ export async function printTags(
     await dispatchPrint(html, TAG_WIDTH_MM, tagRollHeightMm, isWeb);
   } catch (err) {
     console.error(err);
-    const message = 'The device could not open its print service. Check that a printer or system print service is available.';
+    const message = err instanceof Error
+      ? err.message
+      : 'The device could not open its print service. Check that a printer or system print service is available.';
     if (isWeb) window.alert(`Printing unavailable\n\n${message}`);
     else Alert.alert('Printing unavailable', message);
   }
@@ -333,44 +245,28 @@ export async function printBill(
   const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 
   try {
+    const orderNumber = getOrderNumber(order);
+    const customerName = String(customer?.name ?? order?.customerName ?? order?.name ?? 'Customer');
+    const customerPhone = String(customer?.mobile ?? customer?.phone ?? order?.customerPhone ?? order?.phone ?? '');
+    const customerAddress = String(customer?.address ?? order?.customerAddress ?? '');
+    const stateItems = Array.isArray(order?.items) ? order.items : [];
+    const detectedItems: Array<{name: string, service: string, qty: number, kg: number, price: number}> = [];
 
-    const globalOrder = isWeb
-      ? (window as any).currentOrder || (window as any).activeOrder || (window as any).lastCreatedOrder || {}
-      : {};
-    const selectedCustState = isWeb
-      ? (window as any).selectedCustomer || (window as any).currentCustomer || {}
-      : {};
-
-    const directInfo = extractCustomerDetailsDirectly();
-    let customerName = customer?.name || order?.customerName || order?.name || globalOrder?.customerName || selectedCustState?.name || directInfo.name;
-    let customerPhone = customer?.mobile || customer?.phone || order?.customerPhone || order?.phone || globalOrder?.customerPhone || selectedCustState?.phone || directInfo.phone;
-    let customerAddress = customer?.address || order?.customerAddress || globalOrder?.customerAddress || '';
-    let orderNumber = getSequentialOrderNumber(order || globalOrder);
-
-    if (customerName === 'Walk-in Customer' && directInfo.name !== 'Walk-in Customer') {
-      customerName = directInfo.name;
-    }
-    if (!customerPhone && directInfo.phone) {
-      customerPhone = directInfo.phone;
-    }
-
-    let detectedItems: Array<{name: string, service: string, qty: number, kg: number, price: number}> = [];
-    
-    // 1. Check if structural app state contains current live items
-    const stateItems = order?.items || order?.garments || globalOrder?.items || (isWeb ? (window as any).cartItems : []) || [];
-    if (Array.isArray(stateItems) && stateItems.length > 0) {
-      stateItems.forEach((item: any) => {
-        const qty = Number(item.qty || item.quantity || 1);
-        const unitPrice = Number(item.price !== undefined ? item.price : (item.rate || item.ratePerUnit || item.customPrice || 0));
-        detectedItems.push({
-          name: item.name || item.itemName || 'Garment',
-          service: getServiceCode(item),
-          qty,
-          kg: Number(item.kg || 0),
-          price: Number(item.subtotal !== undefined ? item.subtotal : unitPrice * qty)
-        });
+    stateItems.forEach((item: any) => {
+      const qty = Math.max(1, Math.floor(Number(item?.qty ?? item?.quantity ?? 1)));
+      const service = getServiceCode(item);
+      if (service === 'SERVICE?') {
+        throw new Error(`Service is missing for ${item?.itemName || 'a garment'}. Recreate the order with a service selected.`);
+      }
+      const unitPrice = Number(item?.price ?? item?.rate ?? item?.ratePerUnit ?? item?.customPrice ?? 0);
+      detectedItems.push({
+        name: String(item?.itemName ?? item?.name ?? 'Garment'),
+        service,
+        qty: Number.isFinite(qty) ? qty : 1,
+        kg: Number(item?.kg ?? 0),
+        price: Number(item?.subtotal ?? unitPrice * qty),
       });
-    }
+    });
 
     if (Array.isArray(order?.topUps)) {
       order.topUps.filter((topUp: any) => Number(topUp.qty) > 0).forEach((topUp: any) => {
@@ -384,59 +280,14 @@ export async function printBill(
       });
     }
 
-    // 2. Direct real-time screen extraction to intercept dynamic input/temporary changes
-    if (detectedItems.length === 0 && isWeb && typeof document !== 'undefined') {
-      const rows = document.querySelectorAll('table tr, tr, .item-row, .cart-item, div[class*="row"], div[class*="item"]');
-      rows.forEach((row: any) => {
-        const txt = (row.innerText || '').trim();
-        if (!txt || ['total', 'gross', 'balance', 'due', 'subtotal', 'item', 'price'].some(w => txt.toLowerCase().includes(w))) return;
-
-        const cells = row.querySelectorAll('td, span, div, input');
-        if (cells.length >= 2) {
-          let nameCand = '';
-          let numericalTokens: number[] = [];
-
-          cells.forEach((c: any) => {
-            if (c.tagName === 'INPUT') {
-              const val = Number(c.value);
-              if (!isNaN(val) && val > 0) numericalTokens.push(val);
-            } else {
-              const innerT = (c.innerText || '').trim();
-              if (!innerT) return;
-              if (isNaN(Number(innerT)) && innerT.length > 2 && !['qty', 'rate', 'price', 'service'].some(w => innerT.toLowerCase().includes(w))) {
-                if (!nameCand) nameCand = innerT.split('\n')[0];
-              } else {
-                const num = Number(innerT.replace(/[^\d\.]/g, ''));
-                if (!isNaN(num) && num > 0) numericalTokens.push(num);
-              }
-            }
-          });
-
-          if (nameCand && nameCand.length < 30) {
-            let detectedPrice = numericalTokens.length > 0 ? numericalTokens[numericalTokens.length - 1] : 0;
-            let detectedQty = numericalTokens.length > 1 ? numericalTokens[0] : 1;
-            
-            let svc = 'DC';
-            if (txt.toLowerCase().includes('laundry')) svc = 'LD';
-            else if (txt.toLowerCase().includes('iron')) svc = 'IR';
-
-            detectedItems.push({
-              name: nameCand.replace(/[^a-zA-Z0-9\s\-\[\]\/]/g, '').trim(),
-              service: svc,
-              qty: detectedQty,
-              kg: 0,
-              price: detectedPrice
-            });
-          }
-        }
-      });
+    if (detectedItems.length === 0) {
+      throw new Error('This order has no saved items to print.');
     }
 
-    // REMOVED ALL HARDCODED FALLBACK ARRAYS TO PREVENT CORRUPTING SYSTEM PRICES
-    let grossAmount = Number(order?.grossAmount ?? globalOrder?.grossAmount ?? detectedItems.reduce((acc, curr) => acc + curr.price, 0));
-    let discountAmount = Number(order?.discountAmount ?? globalOrder?.discountAmount ?? 0);
-    let netPayable = Number(order?.netPayable ?? globalOrder?.netPayable ?? (grossAmount - discountAmount));
-    let advance = Number(order?.advancePaid ?? order?.advanceAmount ?? globalOrder?.advancePaid ?? globalOrder?.advanceAmount ?? 0);
+    let grossAmount = Number(order?.grossAmount ?? detectedItems.reduce((acc, curr) => acc + curr.price, 0));
+    let discountAmount = Number(order?.discountAmount ?? 0);
+    let netPayable = Number(order?.netPayable ?? (grossAmount - discountAmount));
+    let advance = Number(order?.advancePaid ?? order?.advanceAmount ?? 0);
     let balance = netPayable - advance;
     let totalPcs = detectedItems.reduce((acc, curr) => acc + curr.qty, 0);
     let totalKg = detectedItems.reduce((acc, curr) => acc + curr.kg, 0);
@@ -546,7 +397,9 @@ export async function printBill(
     await dispatchPrint(html, BILL_WIDTH_MM, billRollHeightMm, isWeb);
   } catch (err) {
     console.error('Failed to print bill:', err);
-    const message = 'The device could not open its print service. Check that a printer or system print service is available.';
+    const message = err instanceof Error
+      ? err.message
+      : 'The device could not open its print service. Check that a printer or system print service is available.';
     if (isWeb) window.alert(`Printing unavailable\n\n${message}`);
     else Alert.alert('Printing unavailable', message);
   }

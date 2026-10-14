@@ -38,6 +38,7 @@ export default function StoreSyncScreen() {
   const [busy, setBusy] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
+  const [createdCode, setCreatedCode] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<null | {
     action: 'join' | 'leave';
     title: string;
@@ -57,10 +58,12 @@ export default function StoreSyncScreen() {
     if (busy) return;
     setBusy(true);
     try {
-      await createNewStore(storeInfo.name);
+      const code = await createNewStore(storeInfo.name);
+      setCreatedCode(code);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
-      showMessage('Code not created', 'The store code and its initial data were not saved. Check your connection and try again.');
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Check your connection and try again.';
+      showMessage('Code not created', detail);
     } finally {
       setBusy(false);
     }
@@ -99,11 +102,16 @@ export default function StoreSyncScreen() {
   };
 
   const handleCopy = async () => {
-    if (!storeId) return;
-    await Clipboard.setStringAsync(storeId);
-    setCopied(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setTimeout(() => setCopied(false), 1800);
+    const code = createdCode ?? storeId;
+    if (!code) return;
+    try {
+      await Clipboard.setStringAsync(code);
+      setCopied(true);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      showMessage('Could not copy code', `Please select and copy ${code} manually.`);
+    }
   };
 
   const handleSyncNow = async () => {
@@ -145,11 +153,13 @@ export default function StoreSyncScreen() {
             </Text>
           </View>
 
-          {storeId ? (
+          {createdCode || storeId ? (
             <>
               <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.label, { color: colors.mutedForeground }]}>This Store's Code</Text>
-                <Text style={[styles.code, { color: colors.foreground }]}>{storeId}</Text>
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                  {createdCode ? 'Store Code Generated' : "This Store's Code"}
+                </Text>
+                <Text style={[styles.code, { color: colors.foreground }]}>{createdCode ?? storeId}</Text>
                 <TouchableOpacity
                   style={[styles.copyBtn, { backgroundColor: copied ? colors.accent : colors.primary }]}
                   onPress={handleCopy}

@@ -453,10 +453,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deletedCustomerIds,
       deletedOrderIds,
     });
-    await AsyncStorage.setItem(STORAGE_KEYS.STORE_ID, row.storeId);
+    // Publish the returned code to the UI as soon as the server confirms it;
+    // local persistence must not keep a successfully-created code hidden.
     setStoreId(row.storeId);
     setLastSyncedAt(row.updatedAt);
     setSyncStatus('idle');
+    await AsyncStorage.setItem(STORAGE_KEYS.STORE_ID, row.storeId);
     return row.storeId;
   };
 
