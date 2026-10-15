@@ -488,7 +488,7 @@ export async function printBill(
         <div class="line"></div>
         <div class="section-title center">TERMS & CONDITIONS</div>
         <div class="tc-section">
-          • Not liable for color fastness, threads-out, or missing buttons.<br>
+          • Not liable for color fastness, threads-out, or missing buttons (❁´◡`❁).<br>
           • Report damage or mixed clothes within 24 hours of delivery.<br>
           • Complete legal Terms and Conditions on our site/app.<br>
           • Unforeseen logistics delays will be notified proactively.<br>
@@ -496,7 +496,7 @@ export async function printBill(
           • Store not responsible for garments left over 15 days.
         </div>
         <div class="line"></div>
-        <div class="center bold" style="font-size: 10px; margin-top: 4px; margin-bottom: 4px;">⚡ THANK YOU ⚡</div>
+        <div class="center bold" style="font-size: 10px; margin-top: 4px; margin-bottom: 4px;">😊 THANK YOU 😊 VISIT AGAIN 😊 </div>
         <div style="margin-top: 25px; display: flex; justify-content: space-between; font-size: 9.5px;">
           <span style="border-top: 1.5px solid #000; width: 45%; text-align: center; padding-top: 2px;">CUSTOMER</span>
           <span style="border-top: 1.5px solid #000; width: 45%; text-align: center; padding-top: 2px;">SIGNATURE</span>
