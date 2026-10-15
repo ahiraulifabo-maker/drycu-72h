@@ -44,8 +44,12 @@ function getServiceCode(item: any): string {
     item?.serviceName ??
     item?.serviceLabel ??
     item?.service_type ??
+    item?.service_name ??
     item?.type ??
-    "";
+    item?.category ??
+    item?.name ??
+    (typeof item === "string" ? item : "");
+
   const normalized = String(rawService)
     .trim()
     .toLowerCase()
@@ -53,7 +57,7 @@ function getServiceCode(item: any): string {
     .replace(/\s+/g, " ");
   return (
     SERVICE_ABBR[normalized] ??
-    (normalized ? String(rawService).trim().toUpperCase() : "SERVICE?")
+    (normalized ? String(rawService).trim().toUpperCase() : "SERVICE")
   );
 }
 
