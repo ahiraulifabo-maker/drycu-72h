@@ -488,7 +488,7 @@ export async function printBill(
         <div class="line"></div>
         <div class="section-title center">TERMS & CONDITIONS</div>
         <div class="tc-section">
-          • Not liable for color fastness, threads-out, or missing buttons (❁´◡`❁).<br>
+          • Not liable for color fastness, threads-out, or missing buttons.<br>
           • Report damage or mixed clothes within 24 hours of delivery.<br>
           • Complete legal Terms and Conditions on our site/app.<br>
           • Unforeseen logistics delays will be notified proactively.<br>
